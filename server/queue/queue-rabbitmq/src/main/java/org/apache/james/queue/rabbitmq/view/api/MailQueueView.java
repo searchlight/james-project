@@ -25,7 +25,6 @@ import org.apache.james.queue.api.ManageableMailQueue;
 import org.apache.james.queue.rabbitmq.EnqueueId;
 import org.apache.james.queue.rabbitmq.EnqueuedItem;
 import org.apache.james.queue.rabbitmq.MailQueueName;
-import org.reactivestreams.Publisher;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -40,7 +39,7 @@ public interface MailQueueView<V extends ManageableMailQueue.MailQueueItemView> 
 
     Mono<Void> storeMail(EnqueuedItem enqueuedItem);
 
-    Publisher<Long> delete(DeleteCondition deleteCondition);
+    long delete(DeleteCondition deleteCondition);
 
     Mono<Boolean> isPresent(EnqueueId id);
 

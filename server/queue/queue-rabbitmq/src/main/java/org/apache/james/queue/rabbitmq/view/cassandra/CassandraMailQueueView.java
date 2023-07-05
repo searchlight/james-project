@@ -127,23 +127,25 @@ public class CassandraMailQueueView implements MailQueueView<CassandraMailQueueB
     }
 
     @Override
-    public Mono<Long> delete(DeleteCondition deleteCondition) {
+    public long delete(DeleteCondition deleteCondition) {
         if (deleteCondition instanceof DeleteCondition.WithEnqueueId) {
             DeleteCondition.WithEnqueueId enqueueIdCondition = (DeleteCondition.WithEnqueueId) deleteCondition;
-            return delete(enqueueIdCondition.getEnqueueId(), enqueueIdCondition.getBlobIds())
-                .thenReturn(1L);
+            delete(enqueueIdCondition.getEnqueueId(), enqueueIdCondition.getBlobIds()).block();
+            return 1L;
         }
         return browseThenDelete(deleteCondition);
     }
 
-    private Mono<Long> browseThenDelete(DeleteCondition deleteCondition) {
+    private long browseThenDelete(DeleteCondition deleteCondition) {
         return cassandraMailQueueBrowser.browseReferences(mailQueueName)
             .map(EnqueuedItemWithSlicingContext::getEnqueuedItem)
             .filter(deleteCondition::shouldBeDeleted)
             .flatMap(mailReference -> cassandraMailQueueMailDelete.considerDeleted(mailReference.getEnqueueId(), mailQueueName)
                 .then(Mono.from(mimeMessageStore.delete(mailReference.getPartsId()))), DELETION_CONCURRENCY)
             .count()
-            .doOnNext(ignored -> cassandraMailQueueMailDelete.updateBrowseStart(mailQueueName));
+            .doOnNext(ignored -> cassandraMailQueueMailDelete.updateBrowseStart(mailQueueName))
+            .subscribeOn(Schedulers.elastic())
+            .block();
     }
 
     private Mono<Void> delete(EnqueueId enqueueId,

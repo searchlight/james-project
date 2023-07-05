@@ -25,7 +25,6 @@ import static org.apache.james.queue.api.MailQueue.ENQUEUED_METRIC_NAME_PREFIX;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.util.function.Function;
 
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
@@ -35,7 +34,6 @@ import org.apache.james.blob.mail.MimeMessagePartsId;
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.queue.api.MailQueue;
-import org.apache.james.queue.rabbitmq.view.api.DeleteCondition;
 import org.apache.james.queue.rabbitmq.view.api.MailQueueView;
 import org.apache.james.queue.rabbitmq.view.cassandra.CassandraMailQueueBrowser;
 import org.apache.mailet.Mail;
@@ -81,18 +79,9 @@ class Enqueuer {
                 return Flux.mergeDelayError(2,
                         mailQueueView.storeMail(enqueuedItem),
                         publishReferenceToRabbit(mailReference))
-                        .then()
-                        .onErrorResume(cleanupMailQueueView(enqueueId, mailReference));
+                        .then();
             }).sneakyThrow())
             .thenEmpty(Mono.fromRunnable(enqueueMetric::increment));
-    }
-
-    private Function<Throwable, Mono<Void>> cleanupMailQueueView(EnqueueId enqueueId, MailReference mailReference) {
-        return (Throwable e) -> {
-            DeleteCondition.WithEnqueueId deleteCondition = DeleteCondition.withEnqueueId(enqueueId, mailReference.getPartsId());
-            return Mono.from(mailQueueView.delete(deleteCondition))
-                    .thenReturn(Mono.<Void>error(e));
-        };
     }
 
     Mono<Void> reQueue(CassandraMailQueueBrowser.CassandraMailQueueItemView item) {

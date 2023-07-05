@@ -31,7 +31,6 @@ import static org.apache.mailet.base.MailAddressFixture.RECIPIENT1;
 import static org.apache.mailet.base.MailAddressFixture.SENDER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.awaitility.Awaitility.await;
 import static org.awaitility.Durations.TEN_SECONDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -41,7 +40,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -93,7 +91,6 @@ import org.mockito.ArgumentCaptor;
 
 import com.github.fge.lambdas.Throwing;
 
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -379,12 +376,7 @@ class RabbitMQMailQueueTest {
             String name1 = "myMail1";
             String name2 = "myMail2";
             String name3 = "myMail3";
-
-            List<MailQueue.MailQueueItem> receivedItem = new ArrayList<>();
-            Flux.from(getMailQueue().deQueue())
-                    .doOnNext(receivedItem::add)
-                    .subscribe();
-
+            Flux<MailQueue.MailQueueItem> dequeueFlux = Flux.from(getMailQueue().deQueue());
             getMailQueue().enQueue(defaultMail()
                 .name(name1)
                 .build());
@@ -407,16 +399,19 @@ class RabbitMQMailQueueTest {
                 .name(name3)
                 .build());
 
-            await().atMost(Duration.ofSeconds(10))
-                    .untilAsserted(() -> assertThat(receivedItem)
-                            .extracting(item -> item.getMail().getName())
-                            .contains(name1, name3));
+            List<MailQueue.MailQueueItem> items = dequeueFlux.take(3).collectList().block(Duration.ofSeconds(10));
+
+            assertThat(items)
+                .extracting(item -> item.getMail().getName())
+                .contains(name1, name3);
         }
 
         @Test
         void enqueuedEmailsShouldNotBeLostDuringRabbitMQOutages() throws Exception {
             String name = "myMail";
 
+            rabbitMQExtension.getRabbitMQ().pause();
+            Thread.sleep(2000);
 
             try {
                 getMailQueue().enQueue(defaultMail()
@@ -425,7 +420,8 @@ class RabbitMQMailQueueTest {
             } catch (Exception e) {
                 // Ignore
             }
-            rabbitMQExtension.managementAPI().purgeQueue("/", "JamesMailQueue-workqueue-spool");
+            rabbitMQExtension.getRabbitMQ().unpause();
+            Thread.sleep(100);
 
             getMailQueue().republishNotProcessedMails(clock.instant().plus(30, ChronoUnit.MINUTES)).blockLast();
 
@@ -646,25 +642,14 @@ class RabbitMQMailQueueTest {
         }
 
         private void dequeueMails(int times) {
-            AtomicInteger counter = new AtomicInteger(0);
-            Disposable disposable = Flux.from(getManageableMailQueue()
-                            .deQueue())
-                    .concatMap(mailQueueItem -> Mono.fromCallable(() -> {
-                        if (counter.getAndIncrement() < times) {
-                            mailQueueItem.done(true);
-                            return mailQueueItem;
-                        } else {
-                            mailQueueItem.done(false);
-                            return null;
-                        }
-                    }).subscribeOn(Schedulers.elastic()))
-                    .subscribe();
-
-            try {
-                await().untilAsserted(() -> assertThat(counter.get()).isGreaterThanOrEqualTo(times));
-            } finally {
-                disposable.dispose();
-            }
+            Flux.from(getManageableMailQueue()
+                .deQueue())
+                .take(times)
+                .flatMap(mailQueueItem -> Mono.fromCallable(() -> {
+                    mailQueueItem.done(true);
+                    return mailQueueItem;
+                }))
+                .blockLast();
         }
 
         @Test
@@ -776,7 +761,7 @@ class RabbitMQMailQueueTest {
                 .doOnNext(Throwing.consumer(item -> item.done(true)))
                 .subscribe();
 
-            await().atMost(TEN_SECONDS)
+            Awaitility.await().atMost(TEN_SECONDS)
                 .untilAsserted(() -> assertThat(dequeuedMailNames)
                     .containsExactly(name1, name2, name3));
         }
@@ -815,7 +800,7 @@ class RabbitMQMailQueueTest {
                 .doOnNext(Throwing.consumer(item -> item.done(true)))
                 .subscribe();
 
-            await().atMost(TEN_SECONDS)
+            Awaitility.await().atMost(TEN_SECONDS)
                 .untilAsserted(() -> assertThat(dequeuedMailNames)
                     .containsExactly(name1, name2, name3));
         }
@@ -843,9 +828,10 @@ class RabbitMQMailQueueTest {
                 .subscribe();
 
 
-            await().atMost(TEN_SECONDS)
+            Awaitility.await().atMost(TEN_SECONDS)
                 .untilAsserted(() -> assertThat(deadLetteredCount.get()).isEqualTo(1));
         }
+
         private void resumeDequeuing(Sender sender) {
             sender.bindQueue(getMailQueueBindingSpecification()).block();
         }
