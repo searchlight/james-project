@@ -2,11 +2,7 @@
 
 == Requirements
 
- * Java 21 SDK
-
-Firstly, create your own user network on Docker for the James environment:
-
-    $ docker network create --driver bridge james
+ * Java 11 SDK
 
 Third party compulsory dependencies:
 
@@ -26,7 +22,18 @@ The server ignores any string following the "+" character until the "@" characte
 * Generating a JWT key pair: https://github.com/apache/james-project/blob/master/server/apps/distributed-app/docs/modules/ROOT/pages/configure/jmap.adoc#generating-a-jwt-key-pair
 * Added a webadmin route for deleting an entire group. Example cURL command:
 -----
-$ curl --location --request DELETE 'http://ip:port/address/groups/myGroup'
+$ curl --location --request DELETE 'http://ip:port/address/groups/myGroup@mydomain'
+-----
+* Added a webadmin route for deleting multiple groups. Example cURL command:
+-----
+$ curl --location --request DELETE 'http://ip:port/address/groups' --data-raw '[
+    "myGroup1@mydomain",
+    "myGroup2@mydomain"
+]'
+-----
+* Added a webadmin route for creating an empty group. Example cURL command:
+-----
+$ curl --location --request POST 'http://ip:port/address/groups/myGroup@mydomain'
 -----
 
 
@@ -66,28 +73,9 @@ Note that you can create a domain via an environment variable. This domain will 
 
 [source]
 ----
-  james:
-    ...
-    environment:
-      - DOMAIN=domain.tld
+--environment DOMAIN=domain.tld
 ----
 
-
-[source]
-== Running the modified server
------
-
-$ cd server/apps/distributed-app/
-
-$ mvn clean install -DskipTests
- OR
-$ mvn com.github.ekryd.sortpom:sortpom-maven-plugin:sort -Dsort.keepBlankLines -Dsort.predefinedSortOrder=custom_1 -DskipTests clean install
-
-$ docker compose -f docker-compose.yml up -d
-
-$ sudo (which java) -Dworking.directory=. -Dlogback.configurationFile=conf/logback.xml -Djdk.tls.ephemeralDHKeySize=2048 -jar target/james-server-distributed-app.jar --generate-keystore
-
------
 
 [source]
 
