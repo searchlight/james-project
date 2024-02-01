@@ -333,6 +333,7 @@
             <groupId>com.linagora</groupId>
             <artifactId>logback-elasticsearch-appender</artifactId>
         </dependency>
+
         <dependency>
             <groupId>commons-codec</groupId>
             <artifactId>commons-codec</artifactId>
@@ -365,6 +366,7 @@
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
         </dependency>
+
         <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -393,6 +395,7 @@
             <artifactId>testcontainers</artifactId>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
