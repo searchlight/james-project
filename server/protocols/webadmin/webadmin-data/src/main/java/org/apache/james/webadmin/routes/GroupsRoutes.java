@@ -144,6 +144,27 @@ public class GroupsRoutes implements Routes {
         String jsonString = request.body();
         List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
 
+        //checking is this group correct or not. If not through an exception
+        for (int i = 0; i < groups.size(); i++) {
+            String group = groups.get(i).asText();//todo
+            MailAddress groupAddress;
+            try {
+                groupAddress = new MailAddress(group);
+            } catch (AddressException e) {
+                throw new RuntimeException(e);
+            }
+            Mappings mappings = recipientRewriteTable.getStoredMappings(MappingSource.fromMailAddress(groupAddress))
+                    .select(Mapping.Type.Group);
+
+            ensureNonEmptyMappings(mappings);
+
+            var list = mappings
+                    .asStream()
+                    .map(Mapping::asMailAddress)
+                    .flatMap(Optional::stream)
+                    .map(MailAddress::asString)
+                    .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
+        }
         // Iterate through the array and print each element
         for (int i = 0; i < groups.size(); i++) {
             String group = groups.get(i);//todo
