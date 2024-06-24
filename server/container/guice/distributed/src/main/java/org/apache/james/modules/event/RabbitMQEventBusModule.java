@@ -80,12 +80,6 @@ public class RabbitMQEventBusModule extends AbstractModule {
     }
 
     @ProvidesIntoSet
-    HealthCheck healthCheck(RabbitMQEventBus eventBus, NamingStrategy namingStrategy,
-                            SimpleConnectionPool connectionPool) {
-        return new RabbitEventBusConsumerHealthCheck(eventBus, namingStrategy, connectionPool);
-    }
-
-    @ProvidesIntoSet
     InitializationOperation workQueue(RabbitMQEventBus instance) {
         return InitilizationOperationBuilder
             .forClass(RabbitMQEventBus.class)
