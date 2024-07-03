@@ -23,8 +23,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.james.events.Event;

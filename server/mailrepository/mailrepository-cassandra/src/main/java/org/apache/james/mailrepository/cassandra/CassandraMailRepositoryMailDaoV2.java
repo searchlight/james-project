@@ -51,8 +51,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.mail.internet.AddressException;
+import jakarta.inject.Inject;
+import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.backends.cassandra.utils.CassandraAsyncExecutor;

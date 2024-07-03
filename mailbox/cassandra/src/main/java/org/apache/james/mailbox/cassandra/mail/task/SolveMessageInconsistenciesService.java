@@ -30,8 +30,8 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.james.mailbox.MessageUid;
 import org.apache.james.mailbox.cassandra.ids.CassandraId;

@@ -133,6 +133,18 @@ Optional integer, defaults to 2 times the count of CPUs.
 
 | ignoreIDLEUponProcessing
 | true or false - Allow disabling the heartbeat handler. Defaults to true.
+
+| useEpoll
+| true or false - If true uses native EPOLL implementation for Netty otherwise uses NIO. Defaults to false.
+
+| gracefulShutdown
+| true or false - If true attempts a graceful shutdown, which is safer but can take time. Defaults to true.
+
+| highWriteBufferWaterMark
+| Netty's write buffer high watermark configuration. Unit supported: none, K, M. Netty defaults applied.
+
+| lowWriteBufferWaterMark
+| Netty's write buffer low watermark configuration. Unit supported: none, K, M. Netty defaults applied.
 |===
 
 == OIDC setup
@@ -159,6 +171,8 @@ The following configuration properties are available for extensions:
 thus enable implementing new IMAP commands or replace existing IMAP processors. List of FQDNs, which can be located in
 James extensions.
 
+| additionalConnectionChecks
+| Configure (union) of additional connection checks. ConnectionCheck will check if the connection IP is secure or not.
 | customProperties
 | Properties for custom extension. Each tag is a property entry, and holds a string under the form key=value.
 |===

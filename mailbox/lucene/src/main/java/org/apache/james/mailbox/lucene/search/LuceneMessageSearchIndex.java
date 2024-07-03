@@ -36,10 +36,10 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.stream.Stream;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
-import javax.mail.Flags;
-import javax.mail.Flags.Flag;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
+import jakarta.mail.Flags.Flag;
 
 import org.apache.james.mailbox.MailboxManager;
 import org.apache.james.mailbox.MailboxManager.SearchCapabilities;

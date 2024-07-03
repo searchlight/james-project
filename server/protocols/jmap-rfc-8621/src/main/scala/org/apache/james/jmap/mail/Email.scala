@@ -20,6 +20,7 @@
 package org.apache.james.jmap.mail
 
 import java.io.InputStream
+import java.nio.charset.StandardCharsets
 import java.nio.charset.StandardCharsets.US_ASCII
 import java.time.ZoneId
 import java.util.Date
@@ -29,13 +30,13 @@ import com.google.common.collect.ImmutableMap
 import eu.timepit.refined
 import eu.timepit.refined.auto._
 import eu.timepit.refined.types.string.NonEmptyString
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.commons.lang3.StringUtils
 import org.apache.james.jmap.api.model.Size.{Size, sanitizeSize}
 import org.apache.james.jmap.api.model.{EmailAddress, Preview}
 import org.apache.james.jmap.api.projections.{MessageFastViewPrecomputedProperties, MessageFastViewProjection}
 import org.apache.james.jmap.core.Id.{Id, IdConstraint}
-import org.apache.james.jmap.core.{Properties, UTCDate}
+import org.apache.james.jmap.core.{JmapRfc8621Configuration, Properties, UTCDate}
 import org.apache.james.jmap.mail.BracketHeader.sanitize
 import org.apache.james.jmap.mail.EmailFullViewFactory.extractBodyValues
 import org.apache.james.jmap.mail.EmailGetRequest.MaxBodyValueBytes
@@ -43,13 +44,14 @@ import org.apache.james.jmap.mail.EmailHeaderName.{ADDRESSES_NAMES, DATE, MESSAG
 import org.apache.james.jmap.mail.FastViewWithAttachmentsMetadataReadLevel.supportedByFastViewWithAttachments
 import org.apache.james.jmap.mail.KeywordsFactory.LENIENT_KEYWORDS_FACTORY
 import org.apache.james.jmap.method.ZoneIdProvider
+import org.apache.james.jmap.mime4j.{AvoidBinaryBodyBufferingBodyFactory, JamesBodyDescriptorBuilder}
 import org.apache.james.mailbox.model.FetchGroup.{FULL_CONTENT, HEADERS, HEADERS_WITH_ATTACHMENTS_METADATA, MINIMAL}
 import org.apache.james.mailbox.model.{FetchGroup, MailboxId, MessageId, MessageResult, ThreadId => JavaThreadId}
 import org.apache.james.mailbox.{MailboxSession, MessageIdManager}
 import org.apache.james.mime4j.codec.DecodeMonitor
 import org.apache.james.mime4j.dom.field.{AddressListField, DateTimeField, MailboxField, MailboxListField}
 import org.apache.james.mime4j.dom.{Header, Message}
-import org.apache.james.mime4j.field.AddressListFieldLenientImpl
+import org.apache.james.mime4j.field.{AddressListFieldLenientImpl, LenientFieldParser}
 import org.apache.james.mime4j.message.DefaultMessageBuilder
 import org.apache.james.mime4j.stream.{Field, MimeConfig, RawFieldParser}
 import org.apache.james.mime4j.util.MimeUtil
@@ -65,6 +67,17 @@ import scala.util.{Failure, Success, Try}
 
 object Email {
   private val logger: Logger = LoggerFactory.getLogger(classOf[EmailView])
+
+  def mergeKeywords(messages: Seq[MessageResult]): Try[Keywords] = {
+    messages.map(_.getFlags)
+      .map(LENIENT_KEYWORDS_FACTORY.fromFlags)
+      .sequence
+      .map(list => list.reduce(_ ++ _))
+  }
+
+  val defaultCharset = Option(System.getenv("james.jmap.default.charset"))
+    .map(value => java.nio.charset.Charset.forName(value))
+    .getOrElse(StandardCharsets.US_ASCII)
 
   val defaultProperties: Properties = Properties("id", "blobId", "threadId", "mailboxIds", "keywords", "size",
     "receivedAt", "messageId", "inReplyTo", "references", "sender", "from",
@@ -124,6 +137,8 @@ object Email {
     val defaultMessageBuilder = new DefaultMessageBuilder
     defaultMessageBuilder.setMimeEntityConfig(MimeConfig.PERMISSIVE)
     defaultMessageBuilder.setDecodeMonitor(DecodeMonitor.SILENT)
+    defaultMessageBuilder.setBodyDescriptorBuilder(new JamesBodyDescriptorBuilder(null, LenientFieldParser.getParser, DecodeMonitor.SILENT))
+    defaultMessageBuilder.setBodyFactory(new AvoidBinaryBodyBufferingBodyFactory(defaultCharset))
     val resultMessage = Try(defaultMessageBuilder.parseMessage(inputStream))
     resultMessage.fold(e => {
       Try(inputStream.close())
@@ -348,14 +363,14 @@ object EmailHeaders {
           .map(_.flatten))
         .filter(_.nonEmpty))
 
-  private def extractAddresses(mime4JMessage: Message, fieldName: String): Option[AddressesHeaderValue] =
+  private def extractAddresses(mime4JMessage: Message, fieldName: String): Option[UncheckedAddressesHeaderValue] =
     extractLastField(mime4JMessage, fieldName)
       .flatMap {
-        case f: AddressListField => Some(AddressesHeaderValue(EmailAddress.from(f.getAddressList)))
-        case f: MailboxListField => Some(AddressesHeaderValue(EmailAddress.from(f.getMailboxList)))
+        case f: AddressListField => Some(UncheckedAddressesHeaderValue(UncheckedEmailAddress.from(f.getAddressList)))
+        case f: MailboxListField => Some(UncheckedAddressesHeaderValue(UncheckedEmailAddress.from(f.getMailboxList)))
         case f: MailboxField =>
           val asMailboxListField = AddressListFieldLenientImpl.PARSER.parse(RawFieldParser.DEFAULT.parseField(f.getRaw), DecodeMonitor.SILENT)
-          Some(AddressesHeaderValue(EmailAddress.from(asMailboxListField.getAddressList)))
+          Some(UncheckedAddressesHeaderValue(UncheckedEmailAddress.from(asMailboxListField.getAddressList)))
         case _ => None
       }
       .filter(_.value.nonEmpty)
@@ -377,12 +392,12 @@ case class EmailHeaders(headers: List[EmailHeader],
                         messageId: MessageIdsHeaderValue,
                         inReplyTo: MessageIdsHeaderValue,
                         references: MessageIdsHeaderValue,
-                        to: Option[AddressesHeaderValue],
-                        cc: Option[AddressesHeaderValue],
-                        bcc: Option[AddressesHeaderValue],
-                        from: Option[AddressesHeaderValue],
-                        sender: Option[AddressesHeaderValue],
-                        replyTo: Option[AddressesHeaderValue],
+                        to: Option[UncheckedAddressesHeaderValue],
+                        cc: Option[UncheckedAddressesHeaderValue],
+                        bcc: Option[UncheckedAddressesHeaderValue],
+                        from: Option[UncheckedAddressesHeaderValue],
+                        sender: Option[UncheckedAddressesHeaderValue],
+                        replyTo: Option[UncheckedAddressesHeaderValue],
                         subject: Option[Subject],
                         sentAt: Option[UTCDate])
 
@@ -435,15 +450,8 @@ class EmailViewReaderFactory @Inject() (metadataReader: EmailMetadataViewReader,
                                         fastViewReader: EmailFastViewReader,
                                         fastViewWithAttachmentsMetadataReader: EmailFastViewWithAttachmentsMetadataReader,
                                         fullReader: EmailFullViewReader) {
-  def selectReader(request: EmailGetRequest): EmailViewReader[EmailView] = {
-    val readLevel: ReadLevel = request.properties
-      .getOrElse(Email.defaultProperties)
-      .value
-      .map(ReadLevel.of)
-      .reduceOption(ReadLevel.combine)
-      .getOrElse(MetadataReadLevel)
-
-    readLevel match {
+  def selectReader(request: EmailGetRequest): EmailViewReader[EmailView] =
+    EmailGetRequest.readLevel(request) match {
       case MetadataReadLevel => metadataReader
       case HeaderReadLevel => headerReader
       case FastViewReadLevel => fastViewReader
@@ -455,7 +463,6 @@ class EmailViewReaderFactory @Inject() (metadataReader: EmailMetadataViewReader,
         }
       case FullReadLevel => fullReader
     }
-  }
 }
 
 sealed trait EmailViewReader[+EmailView] {
@@ -498,7 +505,7 @@ private class EmailMetadataViewFactory @Inject()(zoneIdProvider: ZoneIdProvider)
         .map(Success(_))
         .getOrElse(Failure(new IllegalArgumentException("No message supplied")))
       blobId <- BlobId.of(messageId)
-      keywords <- LENIENT_KEYWORDS_FACTORY.fromFlags(firstMessage.getFlags)
+      keywords <- Email.mergeKeywords(message._2)
     } yield {
       EmailMetadataView(
         metadata = EmailMetadata(
@@ -528,7 +535,7 @@ private class EmailHeaderViewFactory @Inject()(zoneIdProvider: ZoneIdProvider) e
         .getOrElse(Failure(new IllegalArgumentException("No message supplied")))
       mime4JMessage <- Email.parseAsMime4JMessage(firstMessage)
       blobId <- BlobId.of(messageId)
-      keywords <- LENIENT_KEYWORDS_FACTORY.fromFlags(firstMessage.getFlags)
+      keywords <- Email.mergeKeywords(message._2)
     } yield {
       EmailHeaderView(
         metadata = EmailMetadata(
@@ -605,7 +612,7 @@ private class EmailFullViewFactory @Inject()(zoneIdProvider: ZoneIdProvider, pre
       bodyStructure <- EmailBodyPart.of(request.bodyProperties, zoneIdProvider.get(), blobId, mime4JMessage)
       bodyValues <- extractBodyValues(htmlTextExtractor)(bodyStructure, request)
       preview <- Try(previewFactory.fromMime4JMessage(mime4JMessage))
-      keywords <- LENIENT_KEYWORDS_FACTORY.fromFlags(firstMessage.getFlags)
+      keywords <- Email.mergeKeywords(message._2)
     } yield {
       EmailFullView(
         metadata = EmailMetadata(
@@ -705,10 +712,12 @@ private class EmailFastViewReader @Inject()(messageIdManager: MessageIdManager,
       case _ => None
     }
 
+    val lowConcurrency = 2
     SFlux.merge(Seq(
       toFastViews(availables, request, mailboxSession),
-      fullReader.read(unavailables.map(_.id), request, mailboxSession)
-        .doOnNext(storeOnCacheMisses)))
+      SFlux.fromIterable(unavailables.map(_.id))
+        .flatMap(id => fullReader.read(Seq(id), request, mailboxSession)
+          .doOnNext(storeOnCacheMisses), lowConcurrency, lowConcurrency)))
   }
 
   private def storeOnCacheMisses(fullView: EmailFullView) = {
@@ -751,7 +760,7 @@ private class EmailFastViewReader @Inject()(messageIdManager: MessageIdManager,
         .getOrElse(Failure(new IllegalArgumentException("No message supplied")))
       mime4JMessage <- Email.parseAsMime4JMessage(firstMessage)
       blobId <- BlobId.of(messageId)
-      keywords <- LENIENT_KEYWORDS_FACTORY.fromFlags(firstMessage.getFlags)
+      keywords <- Email.mergeKeywords(message._2)
     } yield {
       EmailFastView(
         metadata = EmailMetadata(
@@ -842,7 +851,7 @@ private class EmailFastViewWithAttachmentsMetadataReader @Inject()(messageIdMana
         .getOrElse(Failure(new IllegalArgumentException("No message supplied")))
       mime4JMessage <- Email.parseAsMime4JMessage(firstMessage)
       blobId <- BlobId.of(messageId)
-      keywords <- LENIENT_KEYWORDS_FACTORY.fromFlags(firstMessage.getFlags)
+      keywords <- Email.mergeKeywords(message._2)
     } yield {
       EmailFastViewWithAttachments(
         metadata = EmailMetadata(

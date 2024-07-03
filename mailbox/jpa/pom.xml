@@ -31,6 +31,10 @@
     <packaging>jar</packaging>
     <name>Apache James :: Mailbox :: JPA</name>
 
+    <properties>
+        <target.jdk>11</target.jdk>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -86,6 +90,12 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
+            <artifactId>james-json</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
             <artifactId>james-server-data-jpa</artifactId>
             <scope>test</scope>
         </dependency>
@@ -109,13 +119,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>javax.mail</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.apache.derby</groupId>
             <artifactId>derby</artifactId>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>jakarta.mail</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jasypt</groupId>
@@ -155,6 +165,13 @@
                     <enforcePropertyRestrictions>true</enforcePropertyRestrictions>
                     <persistenceXmlFile>${basedir}/src/test/resources/persistence.xml</persistenceXmlFile>
                 </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.xbean</groupId>
+                        <artifactId>xbean-asm9-shaded</artifactId>
+                        <version>4.23</version>
+                    </dependency>
+                </dependencies>
                 <executions>
                     <execution>
                         <id>enhancer</id>

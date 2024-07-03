@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-import javax.annotation.PostConstruct;
-import javax.mail.MessagingException;
+import jakarta.annotation.PostConstruct;
+import jakarta.mail.MessagingException;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.tuple.Pair;

@@ -32,9 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.Username;
-import org.apache.james.eventsourcing.eventstore.EventStore;
 import org.apache.james.jmap.api.exception.StateMismatchException;
-import org.apache.james.jmap.api.filtering.impl.EventSourcingFilteringManagement;
 import org.junit.jupiter.api.Test;
 
 import com.google.common.collect.ImmutableList;
@@ -57,7 +55,7 @@ public interface FilteringManagementContract {
     @Test
     default void listingRulesShouldThrowWhenNullUser() {
         Username username = null;
-        assertThatThrownBy(() -> instantiateFilteringManagement().listRulesForUser(username))
+        assertThatThrownBy(() -> Mono.from(instantiateFilteringManagement().listRulesForUser(username)).block())
             .isInstanceOf(NullPointerException.class);
     }
 

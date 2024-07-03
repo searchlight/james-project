@@ -26,8 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.mail.MessagingException;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
@@ -161,6 +161,7 @@ public class RspamdHttpClient {
     private void transportInformationToHeaders(Mail mail, io.netty.handler.codec.http.HttpHeaders headers) {
         // IP: Defines IP from which this message is received.
         Optional.ofNullable(mail.getRemoteAddr()).ifPresent(ip -> headers.add("IP", ip));
+        Optional.ofNullable(mail.getRemoteHost()).ifPresent(host -> headers.add("Hostname", host));
 
         // HELO: Defines SMTP helo
         mail.getAttribute(Mail.SMTP_HELO)
@@ -183,6 +184,18 @@ public class RspamdHttpClient {
             .filter(String.class::isInstance)
             .map(String.class::cast)
             .ifPresent(user -> headers.add("User", user));
+
+        // SSL details
+        mail.getAttribute(Mail.SSL_PROTOCOL)
+            .map(attr -> attr.getValue().value())
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .ifPresent(tlsVersion -> headers.add("TLS-Version", tlsVersion));
+        mail.getAttribute(Mail.SSL_CIPHER)
+            .map(attr -> attr.getValue().value())
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .ifPresent(cipher -> headers.add("TLS-Cipher", cipher));
     }
 
     private HttpClient buildReactorNettyHttpClient(RspamdClientConfiguration configuration) {
@@ -231,6 +244,10 @@ public class RspamdHttpClient {
                             return Mono.empty();
                         }
                         if (responseBody.contains(" has been already learned as spam, ignore it")) {
+                            LOGGER.debug(responseBody);
+                            return Mono.empty();
+                        }
+                        if (responseBody.contains("Empty body is not permitted")) {
                             LOGGER.debug(responseBody);
                             return Mono.empty();
                         }

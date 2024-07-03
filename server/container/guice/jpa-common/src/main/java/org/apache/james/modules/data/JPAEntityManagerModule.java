@@ -26,9 +26,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.inject.Singleton;
-import javax.persistence.EntityManagerFactory;
-import javax.persistence.Persistence;
+import jakarta.inject.Singleton;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.Persistence;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -67,14 +67,11 @@ public class JPAEntityManagerModule extends AbstractModule {
         properties.putAll(jpaConfiguration.getCustomOpenjpaProperties());
 
         jpaConfiguration.isMultithreaded()
-            .ifPresent(isMultiThread ->
-                properties.put(JPAConfiguration.JPA_MULTITHREADED, jpaConfiguration.isMultithreaded().toString())
-            );
-
+                .map(Object::toString)
+                .ifPresent(value -> properties.put(JPAConfiguration.JPA_MULTITHREADED, value));
         jpaConfiguration.isAttachmentStorageEnabled()
-            .ifPresent(isMultiThread ->
-                properties.put(JPAConfiguration.ATTACHMENT_STORAGE, jpaConfiguration.isAttachmentStorageEnabled().toString())
-            );
+                .map(Object::toString)
+                .ifPresent(value -> properties.put(JPAConfiguration.ATTACHMENT_STORAGE, value));
 
         return Persistence.createEntityManagerFactory("Global", properties);
     }

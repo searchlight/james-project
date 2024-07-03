@@ -23,35 +23,32 @@ import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.Objects;
 
-import javax.persistence.Basic;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.Index;
-import javax.persistence.Lob;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 @Entity(name = "JamesMailStore")
 @IdClass(JPAMail.JPAMailId.class)
 @Table(name = "JAMES_MAIL_STORE", indexes = {
    @Index(name = "REPOSITORY_NAME_MESSAGE_NAME_INDEX", columnList = "REPOSITORY_NAME, MESSAGE_NAME")
 })
-@NamedQueries({
-    @NamedQuery(name = "listMailMessages",
-        query = "SELECT mail.messageName FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName"),
-    @NamedQuery(name = "countMailMessages",
-        query = "SELECT COUNT(mail) FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName"),
-    @NamedQuery(name = "deleteMailMessages",
-        query = "DELETE FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName AND mail.messageName IN (:messageNames)"),
-    @NamedQuery(name = "deleteAllMailMessages",
-        query = "DELETE FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName"),
-    @NamedQuery(name = "findMailMessage",
-        query = "SELECT mail FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName AND mail.messageName = :messageName")
-})
+@NamedQuery(name = "listMailMessages",
+    query = "SELECT mail.messageName FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName")
+@NamedQuery(name = "countMailMessages",
+    query = "SELECT COUNT(mail) FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName")
+@NamedQuery(name = "deleteMailMessages",
+    query = "DELETE FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName AND mail.messageName IN (:messageNames)")
+@NamedQuery(name = "deleteAllMailMessages",
+    query = "DELETE FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName")
+@NamedQuery(name = "findMailMessage",
+    query = "SELECT mail FROM JamesMailStore mail WHERE mail.repositoryName = :repositoryName AND mail.messageName = :messageName")
 public class JPAMail {
 
     static class JPAMailId implements Serializable {

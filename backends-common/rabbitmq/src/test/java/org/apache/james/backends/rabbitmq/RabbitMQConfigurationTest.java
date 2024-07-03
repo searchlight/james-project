@@ -28,17 +28,20 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
 
 import org.apache.commons.configuration2.PropertiesConfiguration;
+import org.apache.commons.configuration2.convert.DefaultListDelimiterHandler;
 import org.apache.commons.configuration2.ex.ConversionException;
 import org.apache.james.util.Host;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
+
+import com.google.common.collect.ImmutableList;
 
 import nl.jqno.equalsverifier.EqualsVerifier;
 
@@ -456,6 +459,60 @@ class RabbitMQConfigurationTest {
     }
 
     @Test
+    void emptyTaskQueueConsumerTimeoutShouldDefaultToOneDay() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        assertThat(RabbitMQConfiguration.from(configuration).getTaskQueueConsumerTimeout())
+            .isEqualTo(Duration.ofDays(1));
+    }
+
+    @Test
+    void parseValidTaskQueueConsumerTimeoutShouldSucceed() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        configuration.addProperty("task.queue.consumer.timeout", "2day");
+
+        assertThat(RabbitMQConfiguration.from(configuration).getTaskQueueConsumerTimeout())
+            .isEqualTo(Duration.ofDays(2));
+    }
+
+    @Test
+    void parseTaskQueueConsumerTimeoutWithoutTimeUnitShouldDefaultToSecond() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        configuration.addProperty("task.queue.consumer.timeout", "3600");
+
+        assertThat(RabbitMQConfiguration.from(configuration).getTaskQueueConsumerTimeout())
+            .isEqualTo(Duration.ofSeconds(3600));
+    }
+
+    @Test
+    void parseInvalidTaskQueueConsumerTimeoutShouldFail() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        configuration.addProperty("task.queue.consumer.timeout", "invalid");
+
+        assertThatThrownBy(() -> RabbitMQConfiguration.from(configuration))
+            .isInstanceOf(NumberFormatException.class);
+    }
+
+    @Test
     void fromShouldReturnEmptyVhostValueByDefault() {
         PropertiesConfiguration configuration = new PropertiesConfiguration();
         String amqpUri = "amqp://james:james@rabbitmqhost:5672";
@@ -515,6 +572,32 @@ class RabbitMQConfigurationTest {
             .isEqualTo(Optional.of("vhosttest"));
     }
 
+    @Test
+    void eventBusPropagateDispatchErrorShouldBeTrueByDefault() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        assertThat(RabbitMQConfiguration.from(configuration).eventBusPropagateDispatchError())
+            .isTrue();
+    }
+
+    @Test
+    void eventBusPropagateDispatchErrorShouldBeDisabledWhenConfiguredFalse() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("uri", "amqp://james:james@rabbitmqhost:5672");
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        configuration.addProperty("event.bus.propagate.dispatch.error", "false");
+
+        assertThat(RabbitMQConfiguration.from(configuration).eventBusPropagateDispatchError())
+            .isFalse();
+    }
+
     @Nested
     class ManagementCredentialsTest {
         @Test
@@ -567,6 +650,36 @@ class RabbitMQConfigurationTest {
             assertThat(RabbitMQConfiguration.ManagementCredentials.from(configuration))
                 .isEqualTo(credentialWithUserAndPassword);
         }
+    }
+
+    @Test
+    void hostsShouldDefaultToAmqpUriIfNotSpecified() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.setListDelimiterHandler(new DefaultListDelimiterHandler(','));
+        String amqpUri = "amqp://james:james@rabbitmqhost1:5672";
+        configuration.addProperty("uri", amqpUri);
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+
+        assertThat(RabbitMQConfiguration.from(configuration).rabbitMQHosts())
+            .containsOnly(Host.from("rabbitmqhost1", 5672));
+    }
+
+    @Test
+    void hostsShouldParseIfSpecified() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.setListDelimiterHandler(new DefaultListDelimiterHandler(','));
+        String amqpUri = "amqp://james:james@rabbitmqhost1:5672";
+        configuration.addProperty("uri", amqpUri);
+        configuration.addProperty("management.uri", "http://james:james@rabbitmqhost:15672/api/");
+        configuration.addProperty("management.user", DEFAULT_USER);
+        configuration.addProperty("management.password", DEFAULT_PASSWORD_STRING);
+        configuration.addProperty("hosts", "rabbitmqhost1:5672,rabbitmqhost2:5672");
+
+        assertThat(RabbitMQConfiguration.from(configuration).rabbitMQHosts())
+            .containsExactlyInAnyOrder(Host.from("rabbitmqhost1", 5672),
+                Host.from("rabbitmqhost2", 5672));
     }
 
     @Nested

@@ -21,13 +21,13 @@ package org.apache.james.jmap.method
 import java.time.ZoneId
 
 import eu.timepit.refined.auto._
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.jmap.api.change.{EmailChangeRepository, State => JavaState}
 import org.apache.james.jmap.api.model.{AccountId => JavaAccountId}
 import org.apache.james.jmap.core.CapabilityIdentifier.{CapabilityIdentifier, JAMES_SHARES, JMAP_CORE, JMAP_MAIL}
 import org.apache.james.jmap.core.Invocation.{Arguments, MethodName}
 import org.apache.james.jmap.core.UuidState.INSTANCE
-import org.apache.james.jmap.core.{AccountId, ErrorCode, Invocation, SessionTranslator, UuidState}
+import org.apache.james.jmap.core.{AccountId, ErrorCode, Invocation, JmapRfc8621Configuration, SessionTranslator, UuidState}
 import org.apache.james.jmap.json.EmailGetSerializer
 import org.apache.james.jmap.mail.{Email, EmailGetRequest, EmailGetResponse, EmailIds, EmailNotFound, EmailView, EmailViewReaderFactory, UnparsedEmailId}
 import org.apache.james.jmap.routes.SessionSupplier
@@ -80,6 +80,7 @@ class EmailGetMethod @Inject() (readerFactory: EmailViewReaderFactory,
                                 val metricFactory: MetricFactory,
                                 val emailchangeRepository: EmailChangeRepository,
                                 val sessionSupplier: SessionSupplier,
+                                val configuration: JmapRfc8621Configuration,
                                 val sessionTranslator: SessionTranslator) extends MethodRequiringAccountId[EmailGetRequest] {
   override val methodName: MethodName = MethodName("Email/get")
   override val requiredCapabilities: Set[CapabilityIdentifier] = Set(JMAP_CORE, JMAP_MAIL)
@@ -94,17 +95,20 @@ class EmailGetMethod @Inject() (readerFactory: EmailViewReaderFactory,
   override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[IllegalArgumentException, EmailGetRequest] =
     EmailGetSerializer.deserializeEmailGetRequest(invocation.arguments.value).asEitherRequest
 
-  private def computeResponseInvocation(capabilities: Set[CapabilityIdentifier], request: EmailGetRequest, invocation: Invocation, mailboxSession: MailboxSession): SMono[Invocation] =
-    Email.validateProperties(request.properties)
-      .flatMap(properties => Email.validateBodyProperties(request.bodyProperties).map((properties, _)))
-      .fold(
-        e => SMono.error(e), {
-          case (properties, bodyProperties) => getEmails(capabilities, request, mailboxSession)
-            .map(response => Invocation(
-              methodName = methodName,
-              arguments = Arguments(EmailGetSerializer.serialize(response, properties, bodyProperties).as[JsObject]),
-              methodCallId = invocation.methodCallId))
-        })
+  private def computeResponseInvocation(capabilities: Set[CapabilityIdentifier], request: EmailGetRequest, invocation: Invocation, mailboxSession: MailboxSession): SMono[Invocation] = {
+    val either: Either[Exception, SMono[Invocation]] = for {
+      properties <- Email.validateProperties(request.properties)
+      bodyProperties <- Email.validateBodyProperties(request.bodyProperties)
+      _ <- request.validate(configuration)
+    } yield {
+      getEmails(capabilities, request, mailboxSession)
+        .map(response => Invocation(
+          methodName = methodName,
+          arguments = Arguments(EmailGetSerializer.serialize(response, properties, bodyProperties).as[JsObject]),
+          methodCallId = invocation.methodCallId))
+    }
+    either.fold(SMono.error, v => v)
+  }
 
   private def getEmails(capabilities: Set[CapabilityIdentifier], request: EmailGetRequest, mailboxSession: MailboxSession): SMono[EmailGetResponse] =
     request.ids match {
@@ -153,14 +157,14 @@ class EmailGetMethod @Inject() (readerFactory: EmailViewReaderFactory,
     }
 
   private def retrieveEmails(ids: Seq[MessageId], mailboxSession: MailboxSession, request: EmailGetRequest): SFlux[EmailGetResults] = {
-    val foundResultsMono: SMono[Map[MessageId, EmailView]] =
-      readerFactory.selectReader(request)
-        .read(ids, request, mailboxSession)
-        .collectMap(_.metadata.id)
+      val foundResultsMono: SMono[Map[MessageId, EmailView]] =
+        readerFactory.selectReader(request)
+          .read(ids, request, mailboxSession)
+          .collectMap(_.metadata.id)
 
-    foundResultsMono.flatMapIterable(foundResults => ids
-      .map(id => foundResults.get(id)
-        .map(EmailGetResults.found)
-        .getOrElse(EmailGetResults.notFound(id))))
+      foundResultsMono.flatMapIterable(foundResults => ids
+        .map(id => foundResults.get(id)
+          .map(EmailGetResults.found)
+          .getOrElse(EmailGetResults.notFound(id))))
   }
 }

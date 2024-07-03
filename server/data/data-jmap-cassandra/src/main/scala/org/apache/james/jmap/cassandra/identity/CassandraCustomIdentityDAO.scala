@@ -23,7 +23,7 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BoundStatement, PreparedStatement, Row}
 import com.datastax.oss.driver.api.core.data.UdtValue
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{bindMarker, deleteFrom, insertInto, selectFrom}
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.backends.cassandra.init.CassandraTypesProvider
 import org.apache.james.backends.cassandra.utils.CassandraAsyncExecutor
 import org.apache.james.core.{MailAddress, Username}
@@ -103,7 +103,7 @@ case class CassandraCustomIdentityDAO @Inject()(session: CqlSession,
   override def upsert(user: Username, patch: Identity): SMono[Unit] =
     insert(user, patch).`then`()
 
-  override def delete(username: Username, ids: Seq[IdentityId]): SMono[Unit] =
+  override def delete(username: Username, ids: Set[IdentityId]): SMono[Unit] =
     SFlux.fromIterable(ids)
       .flatMap(id => executor.executeVoid(deleteOneStatement.bind()
         .setString(USER, username.asString())

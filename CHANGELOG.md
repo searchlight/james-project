@@ -5,7 +5,166 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ## [unreleased]
 
+### Big changes
+
+ - Upgrade javax -> jakarta. See releated upgrade instructions.
+ - Upgrade Java 11 -> 21. See related upgrade instructions.
+
+### Security
+
+- [FIX] JMX password auto-detection
+- [FIX] Enforce CRLF as part of SMTP DATA transaction (#1876)
+- [FIX] Set up JMX auth for Spring
+- [FIX] Set up JMX auth filter for Guice
+- Bump org.apache.commons:commons-configuration2 from 2.9.0 to 2.10.1 (#2147)
+- [Fix] BouncyCastle 1.70 -> 1.77 (fixes multiple minor CVEs)
+- [FIX] SMTP stack should recompute relaying rights upon PROXY message (#1933)
+
+### New Features
+
+- JAMES-3942 Audit trail
+- JAMES-3897 Crowdsec integration for SMTP, IMAP
+- JAMES-3964 Implement and test disabledCaps for SMTP
+- JAMES-3962 JMAP Email/set: specific headers for body parts (#1801)
+- JAMES-3960 Hints to ensure UID/ModSeq consistency in case of disaster
+- JAMES-3959 Starting distributed James without OpenSearch (#1784)
+- JAMES-3954 Implement RFC-9394 PARTIAL for IMAP FETCH/SEARCH
+- JAMES-3944 JMAP FILTER: More features: forward, flag, discard, etc...
+- JAMES-3930 ReadOnlyUsersLDAPRepository::test should allow authentication using localPart as login username
+- Supporting several LDAP hosts
+- JAMES 3822 SMTP FutureRelease Extension
+- JAMES-2434 IsFromMailingList matcher (#1606)
+- JAMES-3906 SSL hot reload for IMAP /SMTP
+- JAMES-3908 Storage directive with several folder (#1575)
+- JAMES-3909 Fully delete one user data webadmin endpoint
+
+### Improvements
+
+ - JAMES-3967 RelayLimit: add error log
+ - JAMES-3967 Store mails when relay is exceeded
+ - [FIX] LdapRepositoryConfiguration should interoperate with UsersRepositoryImpl (#1855)
+ - JAMES-3539 PushSubscription/get should return expired subscriptions (#1845)
+ - [ENHANCEMENT] Allow to trust all certificates with S3 blobstore (#1846)
+ - Numerous dependency updates
+ - [IMPROVEMENT] JMAP: Display message/disposition-notification in main message body
+ - JAMES-3965 DKIMSign: Use fileSystem in order to resolve privateKeyFilepath
+ - JAMES-3963 Full text search: AND for combining phrase terms (#1810)
+ - JAMES-3963 Sort From To Cc on display name first (#1811)
+ - JAMES-3955 Increase consumer timeout for TaskManagerWorkQueue
+ - JAMES-3955 WARNING logs upon closing RABBITMQ channels
+ - JAMES-3955 Applicative timeouts before Rabbit timeouts
+ - JAMES-3958 DKIM: Be resilient when updating mails with invalid headers (#1783)
+ - JAMES-3874 LMTP should handle overQuota exceptions
+ - JAMES-3944 Forwards should rewrite MAIL FROM
+ - JAMES-3887 MailboxManager::createMailboxReactive should subscribe parent mailboes it creates (#1752)
+ - JAMES-3828 ICALAttributeDTO: support missing uid, method and dtstamp fields
+ - [IMPROVMENT] Add Cassandra statements to the logs (#1723)
+ - JAMES-3925 Rework JMAP quota cleanup
+ - JAMES-3926 Move mutualized quota DAOs to backend/cassandra
+ - JAMES-3604 Enable to use quorum queues onto DTM work queue (#1708)
+ - JAMES-3938 IMAP MOVE should not fail on empty mailbox (#1713)
+ - [FIX] VerifySenderIdentity makes sense when auth is not announced (#1693)
+ - [FIX] PropagateLookupRightListener should not fail on missing mailbox
+ - [FIX] Some S3 like object storage, like MinIO, don't accept underscores in their bucket names
+ - JAMES-3914 Sieve actions fails when several recipients
+ - JAMES-3911 JPA: Prevent concurrent operations on the same EntityManager
+ - [FIX] Avoid sending bounce when reprocessing (#2139)
+ - [FIX] IMAP APPEND file leak
+ - JAMES-4020 Fully comply with RFC-3501 Section 6.4.5 (#2123)
+ - [LOGGING] Aborting JMAP upload is too verbose (#2125)
+ - JAMES-4021 Relay for "abc@def"@domain.com
+ - [FIX] AbstractValidRcptHandler fix error handling on invalid username (#2122)
+ - [UPDATE] MIME4J 0.8.9 -> 0.8.11 (#2120)
+ - [FIX] JMAP: Set configurable limits for /get /set objects (#2096)
+ - JAMES-4019 ReactiveThrottler should handle better cancellation (#2104)
+ - [ENHANCEMENT] Decrease log level for "NotSslRecordException"
+ - JAMES-4018 SMTP RCPT TO should parse parameters once
+ - [FIX] Ship mail over web webadmin routes into more apps (#2099)
+ - [FIX] Try recover invalid ascii character in filename
+ - [FIX] RSpamD should not fail when reporting empty body
+ - JAMES-3534 Fixbug - Identity response alway return mayDelete=false when server set identity
+ - [FIX] ImapIdleStateHandler should cancel ongoing requests firs
+ - [FIX] cancel ongoing processing for inactive channels
+ - [FIX] Modified server set identities may not be deletes (#2083)
+ - [FIX] Calendar parsing: be less verbose
+ - [IMPROVEMENT] Allow Email/set create to override attachment charset
+ - JMAP - Delete/destroy should take a set as an input
+ - [FIX] -openjpa.Multithreaded => -Dopenjpa.Multithreaded
+ - [FIX] Avoid forwarding bounces
+ - JAMES-4007 Manage IMAP litteral with Leak aware
+ - JAMES-1717 Notification Registry - handle case Ints.checkedCast throws out of range when expireDate too far (#2051)
+ - JAMES-4012 Lenient MDN parsing for human readable part (#2057)
+ - [FIX] Lower log message in MaybeSender
+ - JAMES-4013 Relay MDN/send
+ - JAMES-3885 Webadmin route to change of username - support `force` parameter  - do not require old user to exist (#2054)
+ - JAMES-4008 JMAP - Email/set - Should be able to save a draft with invalid email address (#2040)
+ - JAMES-4009 StripAttachment should explicitly handle duplicates
+ - [FIX] MailReceptionCheck do not send the mail before we actively listen to the results (#2038)
+ - JMAP - EmailSubmission/set - Should not invoke onSuccessDestroyEmail/onSuccessUpdateEmail when not created (#2041)
+ - JAMES-4006 Bouncer should pass DSN to bounce processor
+ - JAMES-3998 Empty password should not lead to worrying error (#2026)
+ - JAMES-4004 [FIX] Allow retries for S3 saves (#2025)
+ - [FIX] Apply batch size to prefetch
+ - JAMES-3995 Add a max number of items for EmailGet full reads (#2024)
+ - [FIX] Use Netty dns async resolvers
+ - [FIX] IMAP LEAK: CLOSE, UNSELECT
+ - [FIX] Email/set should allow creating an email with attachment of a destroyed message
+ - [FIX] multipart/alternative with attachment had no text value indexed
+ - [FIX] Do not double index multipart/alternative
+ - JAMES-3775 Pass SSL information to RspamD scanner mailet
+ - JAMES-3991 Vacation handling should be case insensitive
+ - [FIX] Lower log level of SSL handshake exceptions (#1998)
+ - JAMES-3986 AttachmentFileNameIs should be decently tested (#1991)
+ - [FIX] Apply RFC-5321 syntax validation for EHLO (#1979)
+ - JAMES-3981 Remove double logs upon closed channels
+ - [IMPROVEMENT] SPF mailet: add missing private network "192.168.0.0/16" and use correct CIDR for private range "172.16.0.0/12"
+ - [ENHANCEMENT] Add Hostname header onto RspamD client
+ - [FIX] Prevent creation of multiline mailbox names (#1973)
+ - [ENHANCEMENT] Add SSL information into SMTP header
+ - JAMES-3976 Email/import should accept empty keywords (#1962)
+ - [FIX] OpenSearch should normalize base subject (#1910)
+ - JAMES-3968 Fix mail loss due to RabbitMQ ack failure
+
+### Performance
+
+ - [FIX] S3BlobStoreDAO::readReactive is blocking on the driver thread
+ - JAMES-3977 Backpressure for IMAP FETCH
+ - [ENHANCEMENT] JMAP: limit parallel read in case of fastView miss
+ - [ENHANCEMENT] JsoupHtmlTextExtractor: The use of concurrent structures is not needed
+ - [ENHANCEMENT] Message content extractor: pre-size strings
+ - [ENHANCEMENT] Computing preview: avoid decoding base64
+ - [ENHANCEMENT] AESBlobStoreDAO: carry over the size
+ - [FIX] Notify eventbus outside of the lock
+ - JAMES-3995 Optimize Email/get
+ - JAMES-4010 Ability to not index body (#2018)
+ - JAMES-4001 File buffering for message storage (#2019)
+ - [FIX] IMAP FETCH was pulling all messages into memory
+
+## [Unreleased 3.8.x]
+
 No changes yet.
+
+## [3.8.1] - 2024-02-23
+
+### Security
+
+- **CVE-2023-51747**: SMTP smuggling in Apache James
+- **CVE-2023-51518**: Privilege escalation via JMX pre-authentication deserialisation
+- [FIX] JMX password auto-detection
+- [FIX] Enforce CRLF as part of SMTP DATA transaction (#1876)
+- [FIX] Set up JMX auth for Spring
+- [FIX] Set up JMX auth filter for Guice
+
+### Enhancements 
+
+ - JAMES-3938 IMAP MOVE should not fail on empty mailbox (#1716)
+ - JAMES-3604 Enable to use quorum queues onto DTM work queue (#1714)
+ - JAMES-3924 Allow conditional Cassandra statement recording
+ - JAMES-3934 Allow external scheduling for RabbitMQ mailQueue browse st… (#1682)
+ - JAMES-3918 Force deletion of user mailboxes (#1608) (#1611)
+ - FIX Proxy for SMTPS (#1594)
+ - JAMES-3914 Sieve actions fails when several recipients
+ - Small JPA enhancements
 
 ## [3.8.0] - 2023-05-17
 
@@ -292,6 +451,28 @@ Multiple performance enhancements for Distributed server mailbox, IMAP, SMTP and
  - JAMES-3900 Snapshots for polled updates (#1533)
  - JAMES-3440 RFC-8621 support for emailQueryView before + inMailbox sorted by receivedAt
  - JAMES-2080 Allow turning off header indexing in OpenSearch (#1516)
+
+## [Unreleased 3.7.x]
+
+No changes yet.
+
+## [3.7.5] - 2024-02-23
+
+### Security
+
+- **CVE-2023-51747**: SMTP smuggling in Apache James
+- **CVE-2023-51518**: Privilege escalation via JMX pre-authentication deserialisation
+- [FIX] JMX password auto-detection
+- [FIX] Enforce CRLF as part of SMTP DATA transaction (#1876)
+- [FIX] Set up JMX auth for Spring
+- [FIX] Set up JMX auth filter for Guice
+
+### Enhancements
+
+
+- JAMES-3604 Enable to use quorum queues onto DTM work queue (#1714)
+- JAMES-3934 Allow external scheduling for RabbitMQ mailQueue browse st… (#1682)
+- JAMES-3918 Force deletion of user mailboxes (#1608) (#1611)
 
 ## [3.7.4] - 2023-03-20
 

@@ -41,11 +41,12 @@ import io.restassured.config.RestAssuredConfig;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 
 public class WebAdminUtils {
     public interface Startable {
-        WebAdminServer start() ;
+        WebAdminServer start();
     }
 
     private static class ConcurrentSafeWebAdminServerFactory {
@@ -68,7 +69,8 @@ public class WebAdminUtils {
          */
         public Startable createServer() {
             return () -> Mono.fromCallable(this::createServerSingleTry)
-                .retryWhen(Retry.backoff(10, Duration.ofMillis(10)))
+                .retryWhen(Retry.backoff(10, Duration.ofMillis(10))
+                    .scheduler(Schedulers.boundedElastic()))
                 .block();
         }
 
@@ -86,10 +88,10 @@ public class WebAdminUtils {
 
     public static Startable createWebAdminServer(Routes... routes) {
         return new ConcurrentSafeWebAdminServerFactory(
-                WebAdminConfiguration.TEST_CONFIGURATION,
-                ImmutableList.copyOf(routes),
-                new NoAuthenticationFilter(),
-                new RecordingMetricFactory())
+            WebAdminConfiguration.TEST_CONFIGURATION,
+            ImmutableList.copyOf(routes),
+            new NoAuthenticationFilter(),
+            new RecordingMetricFactory())
             .createServer();
     }
 

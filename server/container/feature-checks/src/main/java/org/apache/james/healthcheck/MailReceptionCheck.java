@@ -28,8 +28,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import javax.inject.Inject;
-import javax.mail.internet.InternetAddress;
+import jakarta.inject.Inject;
+import jakarta.mail.internet.InternetAddress;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.james.core.Username;
@@ -54,6 +54,7 @@ import org.apache.james.mailbox.model.MessageRange;
 import org.apache.james.server.core.MailImpl;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.util.DurationParser;
+import org.apache.james.util.ReactorUtils;
 import org.apache.mailet.MailetContext;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
@@ -69,6 +70,9 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 public class MailReceptionCheck implements HealthCheck {
+
+    public static final ComponentName COMPONENT_NAME = new ComponentName("MailReceptionCheck");
+
     public static class Configuration {
         private static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(1);
         public static final Configuration DEFAULT = new Configuration(Optional.empty(), DEFAULT_TIMEOUT);
@@ -159,23 +163,47 @@ public class MailReceptionCheck implements HealthCheck {
     }
 
     public static class AwaitReceptionListener implements EventListener.ReactiveEventListener {
-        private final Sinks.Many<Added> sink;
+        private final Sinks.Many<Result> sink;
+        private final MessageManager mailbox;
+        private final Content content;
+        private final MailboxSession session;
 
-        public AwaitReceptionListener() {
-            sink = Sinks.many().multicast().onBackpressureBuffer();
+        public AwaitReceptionListener(MessageManager mailbox, Content content, MailboxSession session) {
+            this.mailbox = mailbox;
+            this.content = content;
+            this.session = session;
+            this.sink = Sinks.many().multicast().onBackpressureBuffer();
         }
 
         @Override
         public Publisher<Void> reactiveEvent(Event event) {
             if (event instanceof Added) {
-                return Mono.fromRunnable(() -> sink.emitNext((Added) event, FAIL_FAST))
-                    .subscribeOn(Schedulers.boundedElastic())
+                Added added = (Added) event;
+                return checkReceived(added)
+                    .flatMap(result -> Mono.fromRunnable(() -> sink.emitNext(result, FAIL_FAST))
+                        .subscribeOn(Schedulers.boundedElastic()))
                     .then();
             }
             return Mono.empty();
         }
 
-        public Flux<Added> addedEvents() {
+        private Mono<Result> checkReceived(Added added) {
+            return Flux.fromIterable(added.getUids())
+                .flatMap(uid -> Flux.from(mailbox.getMessagesReactive(MessageRange.one(uid), FetchGroup.FULL_CONTENT, session)))
+                .filter(Throwing.predicate(messageResult -> IOUtils.toString(messageResult.getBody().getInputStream(), StandardCharsets.US_ASCII)
+                    .contains(content.asString())))
+                // Cleanup our testing mail
+                .concatMap(messageResult -> Mono.from(mailbox.deleteReactive(ImmutableList.of(messageResult.getUid()), session))
+                    .onErrorResume(e -> {
+                        LOGGER.warn("Failed to delete Health check testing email", e);
+                        return Mono.empty();
+                    })
+                    .thenReturn(messageResult))
+                .map(any -> Result.healthy(COMPONENT_NAME))
+                .next();
+        }
+
+        public Flux<Result> results() {
             return sink.asFlux();
         }
     }
@@ -199,7 +227,7 @@ public class MailReceptionCheck implements HealthCheck {
 
     @Override
     public ComponentName componentName() {
-        return new ComponentName("MailReceptionCheck");
+        return COMPONENT_NAME;
     }
 
     @Override
@@ -210,15 +238,20 @@ public class MailReceptionCheck implements HealthCheck {
     }
 
     private Mono<Result> check(Username username) {
+        Content content = Content.generate();
         MailboxSession session = mailboxManager.createSystemSession(username);
-        AwaitReceptionListener listener = new AwaitReceptionListener();
 
         return retrieveInbox(username, session)
-            .flatMap(mailbox -> Mono.usingWhen(
-                Mono.from(eventBus.register(listener, new MailboxIdRegistrationKey(mailbox.getId()))),
-                registration -> sendMail(username)
-                    .flatMap(content -> checkReceived(session, listener, mailbox, content)),
-                Registration::unregister))
+            .flatMap(mailbox -> {
+                AwaitReceptionListener listener = new AwaitReceptionListener(mailbox, content, session);
+                return Mono.usingWhen(
+                    Mono.from(eventBus.register(listener, new MailboxIdRegistrationKey(mailbox.getId()))),
+                    registration -> listener.results()
+                        .doOnSubscribe(any -> sendMail(username, content).subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER).subscribe())
+                        .map(any -> Result.healthy(componentName()))
+                        .next(),
+                    Registration::unregister);
+            })
             .timeout(configuration.getTimeout(), Mono.error(() -> new RuntimeException("HealthCheck email was not received after " + configuration.getTimeout().toMillis() + "ms")))
             .onErrorResume(e -> {
                 LOGGER.error("Mail reception check failed", e);
@@ -234,25 +267,13 @@ public class MailReceptionCheck implements HealthCheck {
                 .then(Mono.from(mailboxManager.getMailboxReactive(mailboxPath, session))));
     }
 
-    private Mono<Result> checkReceived(MailboxSession session, AwaitReceptionListener listener, MessageManager mailbox, Content content) {
-        return listener.addedEvents()
-            .flatMapIterable(Added::getUids)
-            .flatMap(uid -> Flux.from(mailbox.getMessagesReactive(MessageRange.one(uid), FetchGroup.FULL_CONTENT, session)))
-            .filter(Throwing.predicate(messageResult -> IOUtils.toString(messageResult.getBody().getInputStream(), StandardCharsets.US_ASCII)
-                .contains(content.asString())))
-            // Cleanup our testing mail
-            .concatMap(messageResult -> Mono.from(mailbox.deleteReactive(ImmutableList.of(messageResult.getUid()), session))
-                .onErrorResume(e -> {
-                    LOGGER.warn("Failed to delete Health check testing email", e);
-                    return Mono.empty();
-                })
-                .thenReturn(messageResult))
+    private Mono<Result> checkReceived(AwaitReceptionListener listener) {
+        return listener.results()
             .map(any -> Result.healthy(componentName()))
             .next();
     }
 
-    private Mono<Content> sendMail(Username username) {
-        Content content = Content.generate();
+    private Mono<Content> sendMail(Username username, Content content) {
 
         return Mono.fromCallable(() -> usersRepository.getMailAddressFor(username))
             .flatMap(address ->

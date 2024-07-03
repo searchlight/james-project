@@ -25,7 +25,7 @@ import java.io.Serializable;
 import java.util.Map;
 import java.util.Optional;
 
-import javax.mail.MessagingException;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.util.ClassLoaderUtils;
 import org.apache.mailet.Attribute;
@@ -38,7 +38,6 @@ import org.apache.mailet.base.test.FakeMailetConfig;
 import org.junit.jupiter.api.Test;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 
 import net.fortuna.ical4j.model.Calendar;
 

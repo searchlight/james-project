@@ -27,7 +27,7 @@
 
   <section name="Redis Server Configuration">
       <p>
-          Redis is used in distributed James for the optional rate limiting component.
+          Redis is used in distributed James for the optional component.
 
           This configuration helps you configure components using Redis in case you want to setup a distributed James.
           And it is only applicable with Guice products.
@@ -38,7 +38,7 @@
       </p>
 
       <p>
-          RabbitMQ Configuration
+          Redis Configuration
       </p>
       <dl>
           <dt><strong>redisURL</strong></dt>
@@ -46,10 +46,13 @@
               the Redis URI pointing to Redis server. Compulsory.
           </dd>
 
-          <dt><strong>cluster.enabled</strong></dt>
-          <dd>
-              Whether we should attempt connections to Redis as a cluster.Defaults to false.
-          </dd>
+          <dt><strong>redis.topology</strong></dt>
+          <dd>Redis server topology. Defaults to standalone. Possible values: standalone, cluster, master-replica</dd>
+
+          <dt><strong>redis.readFrom</strong></dt>
+          <dd>The property to determine how Lettuce routes read operations to Redis server with topologies other than standalone.
+              Defaults to master. Possible values: master, masterPreferred, replica, replicaPreferred, any.
+              Reference: https://github.com/redis/lettuce/wiki/ReadFrom-Settings.</dd>
 
           <dt><strong>redis.ioThreads</strong></dt>
           <dd>IO threads to be using for the underlying Netty networking resources. If unspecified driver defaults applies.</dd>

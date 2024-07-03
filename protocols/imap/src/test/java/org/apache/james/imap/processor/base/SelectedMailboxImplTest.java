@@ -19,10 +19,10 @@
 
 package org.apache.james.imap.processor.base;
 
-import static javax.mail.Flags.Flag.ANSWERED;
-import static javax.mail.Flags.Flag.FLAGGED;
-import static javax.mail.Flags.Flag.RECENT;
-import static javax.mail.Flags.Flag.SEEN;
+import static jakarta.mail.Flags.Flag.ANSWERED;
+import static jakarta.mail.Flags.Flag.FLAGGED;
+import static jakarta.mail.Flags.Flag.RECENT;
+import static jakarta.mail.Flags.Flag.SEEN;
 import static org.apache.james.mailbox.events.MailboxEvents.Added.IS_APPENDED;
 import static org.apache.james.mailbox.events.MailboxEvents.Added.IS_DELIVERY;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,14 +41,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
 import org.apache.james.events.EventListener;
 import org.apache.james.events.Registration;
-import org.apache.james.imap.encode.FakeImapSession;
 import org.apache.james.imap.processor.base.SelectedMailboxImpl.ApplicableFlags;
 import org.apache.james.mailbox.FlagsBuilder;
 import org.apache.james.mailbox.MailboxManager;
@@ -97,7 +96,6 @@ class SelectedMailboxImplTest {
     private MailboxManager mailboxManager;
     private MessageManager messageManager;
     private MailboxPath mailboxPath;
-    private FakeImapSession imapSession;
     private Mailbox mailbox;
     private TestId mailboxId;
     private EventBus eventBus;
@@ -110,7 +108,6 @@ class SelectedMailboxImplTest {
         mailboxPath = MailboxPath.inbox(Username.of("tellier@linagora.com"));
         mailboxManager = mock(MailboxManager.class);
         messageManager = mock(MessageManager.class);
-        imapSession = new FakeImapSession();
         mailbox = mock(Mailbox.class);
         mailboxId = TestId.of(42);
         mailboxIdRegistrationKey = new MailboxIdRegistrationKey(mailboxId);
@@ -124,8 +121,6 @@ class SelectedMailboxImplTest {
             .thenReturn(Flux.just(MessageUid.of(1), MessageUid.of(3))
                 .delayElements(Duration.ofSeconds(1)));
         when(messageManager.getId()).thenReturn(mailboxId);
-
-        imapSession.setMailboxSession(mock(MailboxSession.class));
 
         when(mailbox.generateAssociatedPath()).thenReturn(mailboxPath);
         when(mailbox.getMailboxId()).thenReturn(mailboxId);
@@ -145,7 +140,7 @@ class SelectedMailboxImplTest {
         SelectedMailboxImpl selectedMailbox = new SelectedMailboxImpl(
             mailboxManager,
             eventBus,
-            imapSession,
+            mock(MailboxSession.class),
             messageManager);
         selectedMailbox.finishInit().block();
 
@@ -159,7 +154,7 @@ class SelectedMailboxImplTest {
             .when(eventBus)
             .register(any(EventListener.ReactiveEventListener.class), eq(mailboxIdRegistrationKey));
 
-        new SelectedMailboxImpl(mailboxManager, eventBus, imapSession, messageManager).finishInit().block();
+        new SelectedMailboxImpl(mailboxManager, eventBus, mock(MailboxSession.class), messageManager).finishInit().block();
 
         assertThat(successCount.get()).isEqualTo(1);
     }
@@ -171,7 +166,7 @@ class SelectedMailboxImplTest {
             .when(eventBus)
             .register(any(EventListener.ReactiveEventListener.class), eq(mailboxIdRegistrationKey));
 
-        SelectedMailboxImpl selectedMailbox = new SelectedMailboxImpl(mailboxManager, eventBus, imapSession, messageManager);
+        SelectedMailboxImpl selectedMailbox = new SelectedMailboxImpl(mailboxManager, eventBus, mock(MailboxSession.class), messageManager);
         selectedMailbox.finishInit().block();
 
         assertThat(selectedMailbox.getApplicableFlags().getUserFlags()).containsOnly(CUSTOM_FLAG);
@@ -187,7 +182,7 @@ class SelectedMailboxImplTest {
         new SelectedMailboxImpl(
             mailboxManager,
             eventBus,
-            imapSession,
+            mock(MailboxSession.class),
             messageManager).finishInit().block();
 
         assertThat(successCount.get())

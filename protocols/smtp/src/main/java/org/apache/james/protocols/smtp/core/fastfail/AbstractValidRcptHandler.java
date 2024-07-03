@@ -31,6 +31,7 @@ import org.apache.james.protocols.smtp.hook.RcptHook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
 /**
  * Handler which want to do a recipient check should extend this
  */
@@ -47,6 +48,13 @@ public abstract class AbstractValidRcptHandler implements RcptHook {
                 return reject(rcpt);
             }
             return HookResult.DECLINED;
+        } catch (IllegalArgumentException e) {
+            LOGGER.info("Encounter an error upon RCPT validation ({}), deny", rcpt.asString());
+            return HookResult.builder()
+                .hookReturnCode(HookReturnCode.deny())
+                .smtpReturnCode(SMTPRetCode.MAILBOX_PERM_UNAVAILABLE)
+                .smtpDescription(DSNStatus.getStatus(DSNStatus.PERMANENT, DSNStatus.ADDRESS_MAILBOX) + " Unknown user: " + rcpt.asString())
+                .build();
         } catch (Exception e) {
             LOGGER.error("Encounter an error upon RCPT validation ({}), deny-soft", rcpt.asString(), e);
             return HookResult.builder()

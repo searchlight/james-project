@@ -18,13 +18,13 @@
  ****************************************************************/
 package org.apache.james.imapserver.netty;
 
+import static org.apache.james.imapserver.netty.NettyImapRequestLineReader.MAXIMUM_LITERAL_COUNT;
+
 import java.io.Closeable;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 
 import org.apache.james.imap.api.display.HumanReadableText;
 import org.apache.james.imap.decode.DecodingException;
@@ -44,10 +44,10 @@ public class NettyStreamImapRequestLineReader extends AbstractNettyImapRequestLi
         private final long offset;
         private final int size;
         private final boolean extraCRLF;
-        private final File file;
+        private final ImapRequestFrameDecoder.FileHolder file;
         private final AbstractNettyImapRequestLineReader reader;
 
-        private FileLiteral(long offset, int size, boolean extraCRLF, File file, AbstractNettyImapRequestLineReader reader) {
+        private FileLiteral(long offset, int size, boolean extraCRLF, ImapRequestFrameDecoder.FileHolder file, AbstractNettyImapRequestLineReader reader) {
             this.offset = offset;
             this.size = size;
             this.extraCRLF = extraCRLF;
@@ -57,19 +57,22 @@ public class NettyStreamImapRequestLineReader extends AbstractNettyImapRequestLi
 
         @Override
         public void close() {
-            Mono.fromRunnable(Throwing.runnable(() -> Files.delete(file.toPath())))
+            Mono.fromRunnable(Throwing.runnable(() -> {
+                    file.dispose();
+                    reader.close();
+                }))
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
         }
 
         @Override
         public long size() {
-            return Math.min(file.length() - offset, size);
+            return Math.min(file.getFile().length() - offset, size);
         }
 
         @Override
         public InputStream getInputStream() throws IOException {
-            FileInputStream fileInputStream = new FileInputStream(file);
+            FileInputStream fileInputStream = new FileInputStream(file.getFile());
             fileInputStream.skip(offset);
             InputStream limitedStream = ByteStreams.limit(fileInputStream, size);
             if (extraCRLF) {
@@ -80,14 +83,19 @@ public class NettyStreamImapRequestLineReader extends AbstractNettyImapRequestLi
         }
     }
 
-    private final File backingFile;
+    private final ImapRequestFrameDecoder.FileHolder backingFile;
     private final CountingInputStream in;
+    private int literalCount = 0;
+    private int read = 0;
+    private final int maxFrameLength;
 
-    public NettyStreamImapRequestLineReader(Channel channel, File file, boolean retry) {
+
+    public NettyStreamImapRequestLineReader(Channel channel, ImapRequestFrameDecoder.FileHolder file, boolean retry, int maxFrameLength) {
         super(channel, retry);
         this.backingFile = file;
+        this.maxFrameLength = maxFrameLength;
         try {
-            this.in = new CountingInputStream(new FileInputStream(file));
+            this.in = new CountingInputStream(new FileInputStream(file.getFile()));
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
         }
@@ -108,15 +116,23 @@ public class NettyStreamImapRequestLineReader extends AbstractNettyImapRequestLi
     public char nextChar() throws DecodingException {
         if (!nextSeen) {
             int next;
+            read++;
+            if (read > maxFrameLength) {
+                throw new DecodingException(HumanReadableText.FAILED, "Line length exceeded.");
+            }
             try {
                 next = in.read();
             } catch (IOException e) {
                 throw new DecodingException(HumanReadableText.SOCKET_IO_FAILURE, "Error reading from stream.", e);
             }
             if (next == -1) {
-                throw new DecodingException(HumanReadableText.ILLEGAL_ARGUMENTS, "Unexpected end of stream.");
+                throw new NettyImapRequestLineReader.NotEnoughDataException(1);
             }
+            read++;
             nextSeen = true;
+            if (read > 8192) {
+                throw new DecodingException(HumanReadableText.FAILED, "Line length exceeded.");
+            }
             nextChar = (char) next;
         }
         
@@ -141,6 +157,11 @@ public class NettyStreamImapRequestLineReader extends AbstractNettyImapRequestLi
         // Unset the next char.
         nextSeen = false;
         nextChar = 0;
+
+        if (literalCount > MAXIMUM_LITERAL_COUNT) {
+            throw new DecodingException(HumanReadableText.FAILED_LITERAL_SIZE_EXCEEDED, "Too many literals. " + MAXIMUM_LITERAL_COUNT + " allowed but got " + literalCount);
+        }
+        literalCount++;
 
         try {
             long offset = in.getCount();

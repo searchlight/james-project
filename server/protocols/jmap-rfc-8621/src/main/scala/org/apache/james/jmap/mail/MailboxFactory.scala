@@ -19,7 +19,7 @@
 
 package org.apache.james.jmap.mail
 
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.jmap.core.UnsignedInt
 import org.apache.james.jmap.mail.MailboxName.MailboxName
 import org.apache.james.jmap.utils.quotas.QuotaLoader
@@ -75,12 +75,13 @@ case class Subscriptions(subscribedNames: Set[MailboxPath]) {
 }
 
 class MailboxFactory @Inject() (mailboxManager: MailboxManager,
-                                namespaceFactory: NamespaceFactory) {
+                                namespaceFactory: NamespaceFactory,
+                                sortOrderProvider: SortOrderProvider) {
 
   private def getRole(mailboxPath: MailboxPath, mailboxSession: MailboxSession): Option[Role] = Role.from(mailboxPath.getName)
     .filter(_ => mailboxPath.belongsTo(mailboxSession)).toScala
 
-  private def getSortOrder(role: Option[Role]): SortOrder = role.map(SortOrder.getSortOrder).getOrElse(SortOrder.defaultSortOrder)
+  private def getSortOrder(role: Option[Role]): SortOrder = role.map(sortOrderProvider.retrieveSortOrder).getOrElse(SortOrder.defaultSortOrder)
 
   private def getRights(resolveMailboxACL: JavaMailboxACL): Rights = Rights.fromACL(MailboxACL.fromJava(resolveMailboxACL))
 

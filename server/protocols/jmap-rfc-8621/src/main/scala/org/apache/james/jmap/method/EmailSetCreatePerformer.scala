@@ -23,12 +23,12 @@ import java.time.ZonedDateTime
 import java.util.Date
 
 import eu.timepit.refined.auto._
-import javax.inject.Inject
-import javax.mail.Flags
+import jakarta.inject.Inject
+import jakarta.mail.Flags
 import org.apache.james.jmap.JMAPConfiguration
 import org.apache.james.jmap.api.model.Size.sanitizeSize
 import org.apache.james.jmap.core.SetError.SetErrorDescription
-import org.apache.james.jmap.core.{JmapRfc8621Configuration, Properties, SetError, UTCDate}
+import org.apache.james.jmap.core.{Properties, SetError, UTCDate}
 import org.apache.james.jmap.json.EmailSetSerializer
 import org.apache.james.jmap.mail.{BlobId, EmailCreationId, EmailCreationRequest, EmailCreationResponse, EmailSetRequest, ThreadId}
 import org.apache.james.jmap.method.EmailSetCreatePerformer.{CreationFailure, CreationResult, CreationResults, CreationSuccess}
@@ -40,11 +40,14 @@ import org.apache.james.mailbox.{MailboxManager, MailboxSession}
 import org.apache.james.mime4j.dom.Message
 import org.apache.james.util.ReactorUtils
 import org.apache.james.util.html.HtmlTextExtractor
+import org.slf4j.LoggerFactory
 import reactor.core.scala.publisher.{SFlux, SMono}
 
 import scala.jdk.OptionConverters._
 
 object EmailSetCreatePerformer {
+  private val LOGGER = LoggerFactory.getLogger(classOf[EmailSetCreatePerformer])
+
   case class CreationResults(results: Seq[CreationResult]) {
     def created: Option[Map[EmailCreationId, EmailCreationResponse]] =
       Option(results.flatMap{
@@ -66,12 +69,24 @@ object EmailSetCreatePerformer {
   case class CreationSuccess(clientId: EmailCreationId, response: EmailCreationResponse) extends CreationResult
   case class CreationFailure(clientId: EmailCreationId, e: Throwable) extends CreationResult {
     def asMessageSetError: SetError = e match {
-      case e: MailboxNotFoundException => SetError.notFound(SetErrorDescription("Mailbox " + e.getMessage))
-      case e: BlobNotFoundException => SetError.invalidArguments(SetErrorDescription(s"Attachment not found: ${e.blobId.value}"), Some(Properties("attachments")))
-      case e: SizeExceededException => SetError.tooLarge(SetErrorDescription(e.getMessage))
-      case e: IllegalArgumentException => SetError.invalidArguments(SetErrorDescription(e.getMessage))
-      case e: OverQuotaException => SetError.overQuota(SetErrorDescription(e.getMessage))
-      case _ => SetError.serverFail(SetErrorDescription(e.getMessage))
+      case e: MailboxNotFoundException =>
+        LOGGER.info(s"Mailbox ${e.getMessage}")
+        SetError.notFound(SetErrorDescription("Mailbox " + e.getMessage))
+      case e: BlobNotFoundException =>
+        LOGGER.info(s"Attachment not found: ${e.blobId.value}")
+        SetError.invalidArguments(SetErrorDescription(s"Attachment not found: ${e.blobId.value}"), Some(Properties("attachments")))
+      case e: SizeExceededException =>
+        LOGGER.info("Attempt to create too big of a message")
+        SetError.tooLarge(SetErrorDescription(e.getMessage))
+      case e: IllegalArgumentException =>
+        LOGGER.info("Illegal argument in Email/set create", e)
+        SetError.invalidArguments(SetErrorDescription(e.getMessage))
+      case e: OverQuotaException =>
+        LOGGER.info("Email/set failed because overquota")
+        SetError.overQuota(SetErrorDescription(e.getMessage))
+      case _ =>
+        LOGGER.error("Email/set failed to create a message", e)
+        SetError.serverFail(SetErrorDescription(e.getMessage))
     }
   }
 }
@@ -82,15 +97,16 @@ class EmailSetCreatePerformer @Inject()(serializer: EmailSetSerializer,
                                         blobResolvers: BlobResolvers,
                                         htmlTextExtractor: HtmlTextExtractor,
                                         mailboxManager: MailboxManager,
-                                        configuration: JMAPConfiguration,
-                                        configurationRfc8621: JmapRfc8621Configuration) {
+                                        configuration: JMAPConfiguration) {
 
   def create(request: EmailSetRequest, mailboxSession: MailboxSession): SMono[CreationResults] =
     SFlux.fromIterable(request.create.getOrElse(Map()))
       .concatMap {
         case (clientId, json) => serializer.deserializeCreationRequest(json)
           .fold(e => SMono.just[CreationResult](CreationFailure(clientId, new IllegalArgumentException(e.toString))),
-            creationRequest => create(clientId, creationRequest, mailboxSession))
+            creationRequest => creationRequest.validateRequest
+              .fold(e => SMono.just[CreationResult](CreationFailure(clientId, e)),
+                _ => create(clientId, creationRequest, mailboxSession)))
       }.collectSeq()
       .map(CreationResults)
 

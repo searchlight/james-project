@@ -18,12 +18,11 @@
  ****************************************************************/
 package org.apache.james.domainlist.jpa.model;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 import org.apache.james.core.Domain;
 
@@ -32,11 +31,10 @@ import org.apache.james.core.Domain;
  */
 @Entity(name = "JamesDomain")
 @Table(name = "JAMES_DOMAIN")
-@NamedQueries({ 
-    @NamedQuery(name = "findDomainByName", query = "SELECT domain FROM JamesDomain domain WHERE domain.name=:name"), 
-    @NamedQuery(name = "containsDomain", query = "SELECT COUNT(domain) FROM JamesDomain domain WHERE domain.name=:name"),
-    @NamedQuery(name = "listDomainNames", query = "SELECT domain.name FROM JamesDomain domain"), 
-    @NamedQuery(name = "deleteDomainByName", query = "DELETE FROM JamesDomain domain WHERE domain.name=:name") })
+@NamedQuery(name = "findDomainByName", query = "SELECT domain FROM JamesDomain domain WHERE domain.name=:name")
+@NamedQuery(name = "containsDomain", query = "SELECT COUNT(domain) FROM JamesDomain domain WHERE domain.name=:name")
+@NamedQuery(name = "listDomainNames", query = "SELECT domain.name FROM JamesDomain domain")
+@NamedQuery(name = "deleteDomainByName", query = "DELETE FROM JamesDomain domain WHERE domain.name=:name")
 public class JPADomain {
 
     /**

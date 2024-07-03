@@ -31,7 +31,7 @@ import static org.mockito.Mockito.verify;
 
 import java.util.stream.IntStream;
 
-import javax.mail.MessagingException;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.metrics.api.Gauge;
 import org.apache.mailet.base.test.FakeMail;
@@ -46,7 +46,6 @@ import com.github.fge.lambdas.Throwing;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 @ExtendWith(MailQueueMetricExtension.class)
 public interface MailQueueMetricContract extends MailQueueContract {

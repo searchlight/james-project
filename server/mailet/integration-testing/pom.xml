@@ -33,7 +33,7 @@
     <name>Apache James :: Server :: Mailet :: Integration Testing</name>
 
     <properties>
-        <xmlunit.version>2.9.1</xmlunit.version>
+        <xmlunit.version>2.10.0</xmlunit.version>
     </properties>
 
     <dependencies>
@@ -126,6 +126,10 @@
         <dependency>
             <groupId>net.javacrumbs.json-unit</groupId>
             <artifactId>json-unit-assertj</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
         </dependency>
         <dependency>
             <groupId>org.hamcrest</groupId>

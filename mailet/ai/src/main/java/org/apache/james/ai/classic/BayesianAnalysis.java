@@ -27,10 +27,11 @@ import java.text.DecimalFormat;
 import java.util.Collection;
 import java.util.Iterator;
 
-import javax.annotation.Resource;
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
 import javax.sql.DataSource;
+
+import jakarta.annotation.Resource;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.MailAddress;
 import org.apache.mailet.Attribute;

@@ -19,18 +19,10 @@
 
 package org.apache.james.mailbox.store;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 public class MailboxManagerConfiguration {
     public static final MailboxManagerConfiguration DEFAULT = new MailboxManagerConfiguration(BatchSizes.defaultValues());
-
-    static class NoMailboxConfiguration extends MailboxManagerConfiguration {
-        // Spring hack
-
-        public NoMailboxConfiguration() {
-            super(BatchSizes.defaultValues());
-        }
-    }
 
     private final BatchSizes batchSizes;
 
@@ -41,13 +33,5 @@ public class MailboxManagerConfiguration {
 
     public BatchSizes getBatchSizes() {
         return batchSizes;
-    }
-
-    public MessageBatcher getCopyBatcher() {
-        return new MessageBatcher(batchSizes.getCopyBatchSize().orElse(MessageBatcher.NO_BATCH_SIZE));
-    }
-
-    public MessageBatcher getMoveBatcher() {
-        return new MessageBatcher(batchSizes.getMoveBatchSize().orElse(MessageBatcher.NO_BATCH_SIZE));
     }
 }

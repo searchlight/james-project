@@ -24,7 +24,7 @@ import static org.mockito.Mockito.mock;
 
 import java.time.Instant;
 
-import javax.mail.internet.AddressException;
+import jakarta.mail.internet.AddressException;
 
 import org.apache.james.JsonSerializationVerifier;
 import org.apache.james.core.MailAddress;
@@ -92,7 +92,7 @@ class DeletedMessagesVaultExportTaskSerializationTest {
 
     @Test
     void additionalInformationWithInvalidMailAddressShouldThrow() {
-        String invalidSerializedAdditionalInformationTask = "{\"type\":\"deleted-messages-export\",\"exportTo\":\"invalid\",\"userExportFrom\":\"james\",\"totalExportedMessages\":42}";;
+        String invalidSerializedAdditionalInformationTask = "{\"type\":\"deleted-messages-export\",\"exportTo\":\"invalid\",\"userExportFrom\":\"james\",\"totalExportedMessages\":42}";
         assertThatCode(() -> JsonTaskAdditionalInformationSerializer.of(DeletedMessagesVaultExportTaskAdditionalInformationDTO.module())
                 .deserialize(invalidSerializedAdditionalInformationTask))
             .hasCauseInstanceOf(AddressException.class);

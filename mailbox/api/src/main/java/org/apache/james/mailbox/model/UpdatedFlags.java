@@ -26,7 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.mailbox.MessageUid;
 import org.apache.james.mailbox.ModSeq;
@@ -245,8 +245,15 @@ public class UpdatedFlags {
         addModifiedUserFlags(flagsOld, flagsNew, modifiedFlags);
         return modifiedFlags.getSystemFlags().length > 0 || modifiedFlags.getUserFlags().length > 0;
     }
-    
+
     public boolean flagsChanged() {
+        return modifiedFlags.getSystemFlags().length > 0 || modifiedFlags.getUserFlags().length > 0;
+    }
+
+    public boolean flagsChangedIgnoringRecent() {
+        if (modifiedFlags.contains(Flags.Flag.RECENT)) {
+            return modifiedFlags.getSystemFlags().length > 1 || modifiedFlags.getUserFlags().length > 0;
+        }
         return modifiedFlags.getSystemFlags().length > 0 || modifiedFlags.getUserFlags().length > 0;
     }
 

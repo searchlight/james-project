@@ -25,7 +25,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import javax.mail.internet.AddressException;
+import jakarta.mail.internet.AddressException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +47,7 @@ public class MaybeSender {
             return MaybeSender.of(new MailAddress(sender));
         } catch (AddressException e) {
             // Should never happen as long as the user does not modify the header by himself
-            LOGGER.warn("Unable to parse the sender address {}, so we fallback to a null sender", sender, e);
+            LOGGER.info("Unable to parse the sender address {}, so we fallback to a null sender: {}", sender, e.getMessage());
             return MaybeSender.nullSender();
         }
     }

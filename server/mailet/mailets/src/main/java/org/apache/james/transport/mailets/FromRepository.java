@@ -23,8 +23,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 
-import javax.inject.Inject;
-import javax.mail.MessagingException;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.lifecycle.api.LifecycleUtil;
 import org.apache.james.mailrepository.api.MailKey;

@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.lifecycle.api.LifecycleUtil;
@@ -172,6 +172,7 @@ public class MailDispatcher {
                             .doOnSuccess(Throwing.consumer(success -> AuditTrail.entry()
                                 .protocol("mailetcontainer")
                                 .action("LocalDelivery")
+                                .username(recipient::asString)
                                 .parameters(Throwing.supplier(() -> ImmutableMap.of("mailId", mail.getName(),
                                     "mimeMessageId", Optional.ofNullable(mail.getMessage())
                                         .map(Throwing.function(MimeMessage::getMessageID))

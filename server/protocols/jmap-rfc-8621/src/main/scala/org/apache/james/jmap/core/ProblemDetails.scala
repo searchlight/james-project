@@ -25,6 +25,7 @@ import org.apache.james.jmap.core.RequestLevelErrorType.{DEFAULT_ERROR_TYPE, Err
 import org.apache.james.jmap.exceptions.UnauthorizedException
 import org.apache.james.jmap.routes.UnsupportedCapabilitiesException
 import org.slf4j.{Logger, LoggerFactory}
+import reactor.netty.channel.AbortedException
 
 /**
  * Problem Details for HTTP APIs within the JMAP context
@@ -40,16 +41,22 @@ object ProblemDetails {
   val LOGGER: Logger = LoggerFactory.getLogger(classOf[ProblemDetails])
 
   def forThrowable(throwable: Throwable): ProblemDetails = throwable match {
+    case exception: AbortedException =>
+      LOGGER.info("The connection was aborted: {}", exception.getMessage)
+      ProblemDetails(status = INTERNAL_SERVER_ERROR, detail = exception.getMessage)
     case exception: IllegalArgumentException =>
+      LOGGER.info("The request was successfully parsed as JSON but did not match the type signature of the Request object: {}", exception.getMessage)
       notRequestProblem(
         s"The request was successfully parsed as JSON but did not match the type signature of the Request object: ${exception.getMessage}")
     case e: UnauthorizedException =>
-      LOGGER.warn("Unauthorized", e)
+      LOGGER.info("Unauthorized", e)
       ProblemDetails(status = UNAUTHORIZED, detail = e.getMessage)
     case exception: JsonParseException =>
+      LOGGER.info("The content type of the request was not application/json or the request did not parse as I-JSON: {}", exception.getMessage)
       notJSONProblem(
         s"The content type of the request was not application/json or the request did not parse as I-JSON: ${exception.getMessage}")
     case exception: UnsupportedCapabilitiesException =>
+      LOGGER.info(s"The request used unsupported capabilities: ${exception.capabilities}")
       unknownCapabilityProblem(s"The request used unsupported capabilities: ${exception.capabilities}")
     case e =>
       LOGGER.error("Unexpected error upon API request", e)

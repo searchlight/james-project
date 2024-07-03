@@ -29,8 +29,8 @@ import static org.mockito.hamcrest.MockitoHamcrest.argThat;
 
 import java.util.Optional;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.transport.util.MimeMessageBodyGenerator;
@@ -53,7 +53,6 @@ public class VacationReplyTest {
     private MailAddress originalSender;
     private MailAddress originalRecipient;
     private FakeMail mail;
-    private MimeMessage generatedBody;
 
     @Before
     public void setUp() throws Exception {
@@ -71,7 +70,6 @@ public class VacationReplyTest {
         when(htmlTextExtractor.toPlainText(any())).thenReturn("HTML");
 
         mimeMessageBodyGenerator = spy(new MimeMessageBodyGenerator(htmlTextExtractor));
-        generatedBody = MimeMessageUtil.defaultMimeMessage();
     }
 
     @Test

@@ -21,7 +21,7 @@ package org.apache.james.jmap.change
 
 import java.time.{Clock, ZonedDateTime}
 
-import javax.inject.{Inject, Named}
+import jakarta.inject.{Inject, Named}
 import org.apache.james.core.Username
 import org.apache.james.events.Event.EventId
 import org.apache.james.events.EventListener.ReactiveGroupEventListener
@@ -34,6 +34,7 @@ import org.apache.james.jmap.core.UuidState
 import org.apache.james.mailbox.MailboxManager
 import org.apache.james.mailbox.events.MailboxEvents
 import org.apache.james.mailbox.events.MailboxEvents.{Added, Expunged, FlagsUpdated, MailboxACLUpdated, MailboxAdded, MailboxDeletion, MailboxEvent, MailboxRenamed}
+import org.apache.james.mailbox.exception.{MailboxException, MailboxNotFoundException}
 import org.apache.james.mailbox.model.{MailboxACL, MailboxId}
 import org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY
 import org.reactivestreams.Publisher
@@ -117,9 +118,13 @@ case class MailboxChangeListener @Inject() (@Named(InjectionKeys.JMAP) eventBus:
         .map(_.getName)
         .map(AccountId.fromString)
         .toList)
-      .onErrorResume(e => {
-        LOGGER.warn("Could not get sharees for mailbox [%s] when listening to change events", mailboxId, e)
-        SMono.just(List.empty)
+      .onErrorResume({
+        case e: MailboxNotFoundException =>
+          LOGGER.warn("Could not get sharees for mailbox {} as the mailbox was deleted", mailboxId)
+          SMono.just(List.empty)
+        case e =>
+          LOGGER.warn("Could not get sharees for mailbox {} when listening to change events", mailboxId, e)
+          SMono.just(List.empty)
       })
   }
 

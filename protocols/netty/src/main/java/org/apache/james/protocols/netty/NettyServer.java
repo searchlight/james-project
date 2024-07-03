@@ -20,7 +20,7 @@ package org.apache.james.protocols.netty;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.protocols.api.Protocol;
 
@@ -88,6 +88,8 @@ public class NettyServer extends AbstractAsyncServer {
         this.secure = secure;
         this.proxyRequired = proxyRequired;
         this.frameHandlerFactory = frameHandlerFactory;
+
+        this.setGracefulShutdown(false);
     }
     
     public void setMaxConcurrentConnections(int maxCurConnections) {

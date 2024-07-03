@@ -29,10 +29,10 @@ import java.io.InputStreamReader;
 import java.util.Enumeration;
 import java.util.Properties;
 
-import javax.mail.MessagingException;
-import javax.mail.Session;
-import javax.mail.internet.MimeMessage;
-import javax.mail.util.SharedByteArrayInputStream;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.util.SharedByteArrayInputStream;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.james.lifecycle.api.LifecycleUtil;
@@ -100,12 +100,37 @@ public class MimeMessageWrapperTest extends MimeMessageFromStreamTest {
     public void setUp() throws Exception {
         mw = getMessageFromSources(content + sep + body);
         onlyHeader = getMessageFromSources(content);
+
+        ContentTypeCleaner.initialize();
     }
 
     @AfterEach
     public void tearDown() throws Exception {
         LifecycleUtil.dispose(mw);
         LifecycleUtil.dispose(onlyHeader);
+    }
+
+    @Test
+    void testMessageWithWrongContentTypeShouldNotThrow() throws Exception {
+        MimeMessageWrapper mmw = new MimeMessageWrapper(mw);
+        new MimeMessageWrapper(mw).addHeader("Content-Type", "file;name=\"malformed.pdf\"");
+        mmw.saveChanges();
+    }
+
+    @Test
+    void testMessageWithStarContentTypeShouldNotThrow() throws Exception {
+        MimeMessageWrapper mmw = new MimeMessageWrapper(mw);
+        new MimeMessageWrapper(mw).addHeader("Content-Type", "image/*; name=\"20230720_175854.jpg\"");
+        mmw.saveChanges();
+    }
+
+    @Test
+    void setHeaderShouldNotAlterValidMimeVersionWhenComment() throws Exception {
+        MimeMessageWrapper mw = new MimeMessageWrapper(getMessageFromSources("Subject: foo\r\nMime-Version: 1.0 (Mac OS X Mail 15.0 \\(3693.60.0.1.1\\))\r\rContent-Transfer-Encoding2: plain" + sep + body));
+        mw.setHeader("abc", "def");
+        mw.saveChanges();
+
+        assertThat(mw.getHeader("Mime-Version")[0]).isEqualTo("1.0 (Mac OS X Mail 15.0 \\(3693.60.0.1.1\\))");
     }
 
     @Test

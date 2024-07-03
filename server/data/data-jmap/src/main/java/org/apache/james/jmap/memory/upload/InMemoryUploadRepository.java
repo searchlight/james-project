@@ -26,7 +26,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.james.blob.api.BlobStore;
@@ -92,11 +92,14 @@ public class InMemoryUploadRepository implements UploadRepository {
     }
 
     @Override
-    public Publisher<Void> delete(UploadId id, Username user) {
+    public Publisher<Boolean> delete(UploadId id, Username user) {
         return Mono.justOrEmpty(uploadStore.get(id))
             .filter(pair -> user.equals(pair.left))
-            .doOnNext(pair -> uploadStore.remove(id))
-            .then();
+            .map(pair -> {
+                uploadStore.remove(id);
+                return true;
+            })
+            .defaultIfEmpty(false);
     }
 
     @Override

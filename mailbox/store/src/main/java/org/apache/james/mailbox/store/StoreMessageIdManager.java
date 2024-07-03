@@ -33,8 +33,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.events.EventBus;
@@ -88,6 +88,8 @@ import com.google.common.collect.Sets;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 public class StoreMessageIdManager implements MessageIdManager {
 
@@ -175,11 +177,21 @@ public class StoreMessageIdManager implements MessageIdManager {
         MessageIdMapper messageIdMapper = mailboxSessionMapperFactory.getMessageIdMapper(mailboxSession);
 
         MessageMapper.FetchType fetchType = FetchGroupConverter.getFetchType(fetchGroup);
+        boolean delayError = false;
+        int prefetch = 1;
         return messageIdMapper.findReactive(messageIds, fetchType)
             .groupBy(MailboxMessage::getMailboxId)
             .filterWhen(groupedFlux -> hasRightsOnMailboxReactive(mailboxSession, Right.Read).apply(groupedFlux.key()), DEFAULT_CONCURRENCY)
             .flatMap(Function.identity(), DEFAULT_CONCURRENCY)
+            .publishOn(forFetchType(fetchType), delayError, prefetch)
             .map(Throwing.function(messageResultConverter(fetchGroup)).sneakyThrow());
+    }
+
+    private Scheduler forFetchType(MessageMapper.FetchType fetchType) {
+        if (fetchType == MessageMapper.FetchType.FULL) {
+            return Schedulers.parallel();
+        }
+        return Schedulers.immediate();
     }
 
     @Override
@@ -234,7 +246,7 @@ public class StoreMessageIdManager implements MessageIdManager {
     }
 
     @Override
-    public Mono<DeleteResult> delete(List<MessageId> messageIds, MailboxSession mailboxSession) {
+    public Mono<DeleteResult> delete(Set<MessageId> messageIds, MailboxSession mailboxSession) {
         MessageIdMapper messageIdMapper = mailboxSessionMapperFactory.getMessageIdMapper(mailboxSession);
 
         return messageIdMapper.findReactive(messageIds, MessageMapper.FetchType.METADATA)
@@ -248,7 +260,7 @@ public class StoreMessageIdManager implements MessageIdManager {
                 .flatMap(allowedMailboxIds -> deleteInAllowedMailboxes(messageIds, mailboxSession, messageIdMapper, messageList, allowedMailboxIds)));
     }
 
-    private Mono<DeleteResult> deleteInAllowedMailboxes(List<MessageId> messageIds, MailboxSession mailboxSession, MessageIdMapper messageIdMapper, List<MailboxMessage> messageList, ImmutableSet<MailboxId> allowedMailboxIds) {
+    private Mono<DeleteResult> deleteInAllowedMailboxes(Set<MessageId> messageIds, MailboxSession mailboxSession, MessageIdMapper messageIdMapper, List<MailboxMessage> messageList, ImmutableSet<MailboxId> allowedMailboxIds) {
         List<MailboxMessage> accessibleMessages = messageList.stream()
             .filter(message -> allowedMailboxIds.contains(message.getMailboxId()))
             .collect(ImmutableList.toImmutableList());

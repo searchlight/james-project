@@ -23,12 +23,11 @@ import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.sieverepository.api.ScriptContent;
@@ -40,11 +39,9 @@ import com.google.common.base.Preconditions;
 
 @Entity(name = "JamesSieveScript")
 @Table(name = "JAMES_SIEVE_SCRIPT")
-@NamedQueries({
-        @NamedQuery(name = "findAllByUsername", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username"),
-        @NamedQuery(name = "findActiveByUsername", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username AND sieveScript.isActive=true"),
-        @NamedQuery(name = "findSieveScript", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username AND sieveScript.scriptName=:scriptName")
-})
+@NamedQuery(name = "findAllByUsername", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username")
+@NamedQuery(name = "findActiveByUsername", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username AND sieveScript.isActive=true")
+@NamedQuery(name = "findSieveScript", query = "SELECT sieveScript FROM JamesSieveScript sieveScript WHERE sieveScript.username=:username AND sieveScript.scriptName=:scriptName")
 public class JPASieveScript {
 
     public static Builder builder() {

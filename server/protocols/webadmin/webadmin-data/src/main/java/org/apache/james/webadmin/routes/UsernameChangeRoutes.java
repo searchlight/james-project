@@ -21,7 +21,7 @@ package org.apache.james.webadmin.routes;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.task.TaskManager;
@@ -32,7 +32,9 @@ import org.apache.james.webadmin.service.UsernameChangeService;
 import org.apache.james.webadmin.service.UsernameChangeTask;
 import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
 import org.apache.james.webadmin.tasks.TaskRegistrationKey;
+import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.JsonTransformer;
+import org.eclipse.jetty.http.HttpStatus;
 
 import com.google.common.base.Preconditions;
 
@@ -42,6 +44,7 @@ import spark.Service;
 public class UsernameChangeRoutes implements Routes {
     private static final String OLD_USER_PARAM = "oldUser";
     private static final String NEW_USER_PARAM = "newUser";
+    private static final String FORCE_PARAM = "force";
     private static final String ROOT_PATH = "/users/:" + OLD_USER_PARAM + "/rename/:" + NEW_USER_PARAM;
     private static final TaskRegistrationKey RENAME = TaskRegistrationKey.of("rename");
 
@@ -49,6 +52,8 @@ public class UsernameChangeRoutes implements Routes {
     private final UsernameChangeService service;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
+
+    private final String dummyUser = "fc8f9dc08044a0c0ff9528fe997@fc8f9dc08044a0c0a8c23c68";
 
     @Inject
     UsernameChangeRoutes(UsersRepository usersRepository, UsernameChangeService service, TaskManager taskManager, JsonTransformer jsonTransformer) {
@@ -72,6 +77,15 @@ public class UsernameChangeRoutes implements Routes {
         return TaskFromRequestRegistry.of(RENAME, request -> {
             Username oldUser = Username.of(request.params(OLD_USER_PARAM));
             Username newUser = Username.of(request.params(NEW_USER_PARAM));
+
+            Preconditions.checkArgument(request.queryParams(FORCE_PARAM) != null || usersRepository.contains(oldUser), "'oldUser' parameter should be an existing user");
+            if (dummyUser.equals(newUser.asString())) {
+                throw ErrorResponder.builder()
+                        .statusCode(HttpStatus.BAD_REQUEST_400)
+                        .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                        .message("Username supplied is invalid")
+                        .haltError();
+            }
 
             Preconditions.checkArgument(usersRepository.contains(oldUser), "'oldUser' parameter should be an existing user");
             Preconditions.checkArgument(usersRepository.contains(newUser), "'newUser' parameter should be an existing user");

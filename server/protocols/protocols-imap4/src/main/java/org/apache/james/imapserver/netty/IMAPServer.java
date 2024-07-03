@@ -19,13 +19,16 @@
 package org.apache.james.imapserver.netty;
 
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.commons.configuration2.tree.ImmutableNode;
+import org.apache.james.imap.api.ConnectionCheck;
 import org.apache.james.imap.api.ImapConfiguration;
 import org.apache.james.imap.api.ImapConstants;
 import org.apache.james.imap.api.process.ImapProcessor;
@@ -80,7 +83,7 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
                         isRequireSSL,
                         isPlainAuthEnabled,
                         OidcSASLConfiguration.parse(configuration.configurationAt(OIDC_PATH)));
-                } catch (MalformedURLException | NullPointerException exception) {
+                } catch (MalformedURLException | NullPointerException | URISyntaxException exception) {
                     throw new ConfigurationException("Failed to retrieve oauth component", exception);
                 }
             }
@@ -132,6 +135,7 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
     private final ImapDecoder decoder;
     private final ImapMetrics imapMetrics;
     private final GaugeRegistry gaugeRegistry;
+    private final Set<ConnectionCheck> connectionChecks;
 
     private String hello;
     private boolean compress;
@@ -146,13 +150,13 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
     private Duration heartbeatInterval;
     private ReactiveThrottler reactiveThrottler;
 
-
-    public IMAPServer(ImapDecoder decoder, ImapEncoder encoder, ImapProcessor processor, ImapMetrics imapMetrics, GaugeRegistry gaugeRegistry) {
+    public IMAPServer(ImapDecoder decoder, ImapEncoder encoder, ImapProcessor processor, ImapMetrics imapMetrics, GaugeRegistry gaugeRegistry, Set<ConnectionCheck> connectionChecks) {
         this.processor = processor;
         this.encoder = encoder;
         this.decoder = decoder;
         this.imapMetrics = imapMetrics;
         this.gaugeRegistry = gaugeRegistry;
+        this.connectionChecks = connectionChecks;
     }
 
     @Override
@@ -240,6 +244,7 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
             @Override
             public void initChannel(Channel channel) {
                 ChannelPipeline pipeline = channel.pipeline();
+                channel.config().setWriteBufferWaterMark(writeBufferWaterMark);
                 pipeline.addLast(TIMEOUT_HANDLER, new ImapIdleStateHandler(timeout));
 
                 connectionLimitUpstreamHandler.ifPresent(handler -> pipeline.addLast(HandlerConstants.CONNECTION_LIMIT_HANDLER, handler));
@@ -247,7 +252,7 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
 
                 if (proxyRequired) {
                     pipeline.addLast(HandlerConstants.PROXY_HANDLER, new HAProxyMessageDecoder());
-                    pipeline.addLast("proxyInformationHandler", new HAProxyMessageHandler());
+                    pipeline.addLast("proxyInformationHandler", new HAProxyMessageHandler(connectionChecks));
                 }
 
                 // Add the text line decoder which limit the max line length,
@@ -290,10 +295,12 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
             .encoder(encoder)
             .compress(compress)
             .authenticationConfiguration(authenticationConfiguration)
+            .connectionChecks(connectionChecks)
             .secure(secure)
             .imapMetrics(imapMetrics)
             .heartbeatInterval(heartbeatInterval)
             .ignoreIDLEUponProcessing(ignoreIDLEUponProcessing)
+            .proxyRequired(proxyRequired)
             .build();
     }
 
@@ -302,4 +309,7 @@ public class IMAPServer extends AbstractConfigurableAsyncServer implements ImapC
         return new SwitchableLineBasedFrameDecoderFactory(maxLineLength);
     }
 
+    public Set<ConnectionCheck> getConnectionChecks() {
+        return this.connectionChecks;
+    }
 }

@@ -34,7 +34,7 @@ import static org.apache.james.mailbox.cassandra.table.CassandraMailboxPathV3Tab
 import static org.apache.james.mailbox.cassandra.table.CassandraMailboxPathV3Table.UIDVALIDITY;
 import static org.apache.james.mailbox.cassandra.table.CassandraMailboxPathV3Table.USER;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.backends.cassandra.init.configuration.JamesExecutionProfiles;
 import org.apache.james.backends.cassandra.utils.CassandraAsyncExecutor;
@@ -185,6 +185,7 @@ public class CassandraMailboxPathV3DAO {
      * or log history might have been dropped)
      */
     private void logReadSuccess(Mailbox mailbox) {
+        System.out.println("mailbox DAO");
         if (GhostMailbox.isDebugEnabled()) {
             GhostMailbox.logger()
                 .field(GhostMailbox.MAILBOX_NAME, mailbox.generateAssociatedPath().asString())

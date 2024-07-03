@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
+import static org.mockito.Mockito.mock;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,8 +34,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.Optional;
+import java.util.UUID;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
 import org.apache.james.backends.opensearch.OpenSearchIndexer;
@@ -53,7 +55,6 @@ import org.apache.james.mailbox.extractor.TextExtractor;
 import org.apache.james.mailbox.inmemory.InMemoryMailboxSessionMapperFactory;
 import org.apache.james.mailbox.inmemory.InMemoryMessageId;
 import org.apache.james.mailbox.manager.ManagerTestProvisionner;
-import org.apache.james.mailbox.model.AttachmentId;
 import org.apache.james.mailbox.model.AttachmentMetadata;
 import org.apache.james.mailbox.model.ByteContent;
 import org.apache.james.mailbox.model.ContentType;
@@ -63,6 +64,7 @@ import org.apache.james.mailbox.model.MessageAttachmentMetadata;
 import org.apache.james.mailbox.model.MessageId;
 import org.apache.james.mailbox.model.MessageMetaData;
 import org.apache.james.mailbox.model.SearchQuery;
+import org.apache.james.mailbox.model.StringBackedAttachmentId;
 import org.apache.james.mailbox.model.TestId;
 import org.apache.james.mailbox.model.TestMessageId;
 import org.apache.james.mailbox.model.ThreadId;
@@ -151,7 +153,7 @@ class OpenSearchListeningMessageSearchIndexTest {
     static final MessageAttachmentMetadata MESSAGE_ATTACHMENT = MessageAttachmentMetadata.builder()
         .attachment(AttachmentMetadata.builder()
             .messageId(MESSAGE_ID_3)
-            .attachmentId(AttachmentId.from("1"))
+            .attachmentId(StringBackedAttachmentId.from("1"))
             .type("type")
             .size(523)
             .build())
@@ -393,6 +395,18 @@ class OpenSearchListeningMessageSearchIndexTest {
         SearchQuery query = SearchQuery.of(SearchQuery.all());
         assertThat(testee.search(session, mailbox, query).toStream())
             .isEmpty();
+    }
+
+    @Test
+    void addShouldNotFailWhenMailboxHadBeenDeleted() {
+        mapperFactory.getMailboxMapper(session)
+            .delete(mailbox)
+            .block();
+
+        assertThatCode(() -> testee.event(new MailboxEvents.Added(MailboxSession.SessionId.of(36), BOB, mailbox.generateAssociatedPath(),
+            mailbox.getMailboxId(), ImmutableSortedMap.of(MESSAGE_UID_1, mock(MessageMetaData.class)), Event.EventId.of(UUID.randomUUID()),
+            !IS_DELIVERY, IS_APPENDED, Optional.empty())))
+            .doesNotThrowAnyException();
     }
 
     @Test

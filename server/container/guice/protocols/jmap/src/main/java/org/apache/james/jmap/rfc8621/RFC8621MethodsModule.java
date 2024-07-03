@@ -48,6 +48,7 @@ import org.apache.james.jmap.http.JWTAuthenticationStrategy;
 import org.apache.james.jmap.http.rfc8621.InjectionKeys;
 import org.apache.james.jmap.mail.DefaultNamespaceFactory;
 import org.apache.james.jmap.mail.NamespaceFactory;
+import org.apache.james.jmap.mail.SortOrderProvider;
 import org.apache.james.jmap.method.CoreEchoMethod;
 import org.apache.james.jmap.method.DelegateGetMethod;
 import org.apache.james.jmap.method.DelegateSetMethod;
@@ -85,7 +86,6 @@ import org.apache.james.jmap.method.ZoneIdProvider;
 import org.apache.james.jmap.pushsubscription.DefaultWebPushClient;
 import org.apache.james.jmap.pushsubscription.PushClientConfiguration;
 import org.apache.james.jmap.pushsubscription.WebPushClient;
-import org.apache.james.jmap.routes.AttachmentBlobResolver;
 import org.apache.james.jmap.routes.BlobResolver;
 import org.apache.james.jmap.routes.DownloadRoutes;
 import org.apache.james.jmap.routes.EventSourceRoutes;
@@ -128,6 +128,7 @@ public class RFC8621MethodsModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(NamespaceFactory.class).to(DefaultNamespaceFactory.class);
+        bind(SortOrderProvider.class).toInstance(SortOrderProvider.DEFAULT());
         bind(ZoneIdProvider.class).to(SystemZoneIdProvider.class);
 
         bind(EmailSubmissionSetMethod.class).in(Scopes.SINGLETON);
@@ -196,7 +197,6 @@ public class RFC8621MethodsModule extends AbstractModule {
         blobResolverMultibinder.addBinding().to(MessageBlobResolver.class);
         blobResolverMultibinder.addBinding().to(UploadResolver.class);
         blobResolverMultibinder.addBinding().to(MessagePartBlobResolver.class);
-        blobResolverMultibinder.addBinding().to(AttachmentBlobResolver.class);
     }
 
     @ProvidesIntoSet

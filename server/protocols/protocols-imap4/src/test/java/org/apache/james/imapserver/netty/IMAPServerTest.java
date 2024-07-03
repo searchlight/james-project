@@ -19,8 +19,8 @@
 
 package org.apache.james.imapserver.netty;
 
-import static javax.mail.Flags.Flag.ANSWERED;
-import static javax.mail.Folder.READ_WRITE;
+import static jakarta.mail.Flags.Flag.ANSWERED;
+import static jakarta.mail.Folder.READ_WRITE;
 import static org.apache.james.jmap.JMAPTestingConstants.LOCALHOST_IP;
 import static org.apache.james.jwt.OidcTokenFixture.INTROSPECTION_RESPONSE;
 import static org.apache.james.mailbox.MessageManager.FlagsUpdateMode.REPLACE;
@@ -29,6 +29,11 @@ import static org.apache.james.mailbox.MessageManager.MailboxMetaData.RecentMode
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import java.io.EOFException;
 import java.io.FileNotFoundException;
@@ -42,25 +47,28 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
-import javax.mail.FetchProfile;
-import javax.mail.Flags;
-import javax.mail.Folder;
-import javax.mail.Message;
-import javax.mail.Session;
-import javax.mail.Store;
-import javax.mail.search.AndTerm;
-import javax.mail.search.BodyTerm;
-import javax.mail.search.FromStringTerm;
-import javax.mail.search.RecipientStringTerm;
-import javax.mail.search.SearchTerm;
-import javax.mail.search.SubjectTerm;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+
+import jakarta.mail.FetchProfile;
+import jakarta.mail.Flags;
+import jakarta.mail.Folder;
+import jakarta.mail.Message;
+import jakarta.mail.Session;
+import jakarta.mail.Store;
+import jakarta.mail.search.AndTerm;
+import jakarta.mail.search.BodyTerm;
+import jakarta.mail.search.FromStringTerm;
+import jakarta.mail.search.RecipientStringTerm;
+import jakarta.mail.search.SearchTerm;
+import jakarta.mail.search.SubjectTerm;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -69,6 +77,7 @@ import org.apache.commons.net.imap.AuthenticatingIMAPClient;
 import org.apache.commons.net.imap.IMAPReply;
 import org.apache.commons.net.imap.IMAPSClient;
 import org.apache.james.core.Username;
+import org.apache.james.imap.api.ConnectionCheck;
 import org.apache.james.imap.encode.main.DefaultImapEncoderFactory;
 import org.apache.james.imap.main.DefaultImapDecoderFactory;
 import org.apache.james.imap.processor.base.AbstractProcessor;
@@ -92,19 +101,20 @@ import org.apache.james.protocols.api.OIDCSASLHelper;
 import org.apache.james.protocols.api.utils.BogusSslContextFactory;
 import org.apache.james.protocols.api.utils.BogusTrustManagerFactory;
 import org.apache.james.protocols.lib.mock.ConfigLoader;
-import org.apache.james.server.core.configuration.Configuration;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.util.ClassLoaderUtils;
 import org.apache.james.util.concurrency.ConcurrentTestRunner;
 import org.apache.james.utils.TestIMAPClient;
 import org.assertj.core.api.SoftAssertions;
 import org.awaitility.Awaitility;
+import org.eclipse.angus.mail.imap.IMAPFolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.stubbing.Answer;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
@@ -112,7 +122,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
-import com.sun.mail.imap.IMAPFolder;
+import com.google.common.collect.ImmutableSet;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -125,17 +135,19 @@ import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.ssl.SslContextBuilder;
 import nl.altindag.ssl.exception.GenericKeyStoreException;
 import nl.altindag.ssl.pem.exception.PrivateKeyParseException;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.Connection;
 import reactor.netty.tcp.TcpClient;
 
+@SuppressWarnings("checkstyle:membername")
 class IMAPServerTest {
     private static final String _129K_MESSAGE = "header: value\r\n" + "012345678\r\n".repeat(13107);
     private static final String _65K_MESSAGE = "header: value\r\n" + "012345678\r\n".repeat(6553);
     private static final Username USER = Username.of("user@domain.org");
     private static final Username USER2 = Username.of("bobo@domain.org");
-    private static final Username USER3= Username.of("user3@domain.org");
+    private static final Username USER3 = Username.of("user3@domain.org");
     private static final String USER_PASS = "pass";
     public static final String SMALL_MESSAGE = "header: value\r\n\r\nBODY";
     private InMemoryIntegrationResources memoryIntegrationResources;
@@ -143,33 +155,32 @@ class IMAPServerTest {
 
     @RegisterExtension
     public TestIMAPClient testIMAPClient = new TestIMAPClient();
+    private InMemoryMailboxManager mailboxManager;
 
     private IMAPServer createImapServer(HierarchicalConfiguration<ImmutableNode> config,
                                         InMemoryIntegrationResources inMemoryIntegrationResources) throws Exception {
         memoryIntegrationResources = inMemoryIntegrationResources;
 
         RecordingMetricFactory metricFactory = new RecordingMetricFactory();
+        Set<ConnectionCheck> connectionChecks = defaultConnectionChecks();
+        mailboxManager = spy(memoryIntegrationResources.getMailboxManager());
         IMAPServer imapServer = new IMAPServer(
             DefaultImapDecoderFactory.createDecoder(),
             new DefaultImapEncoderFactory().buildImapEncoder(),
             DefaultImapProcessorFactory.createXListSupportingProcessor(
-                memoryIntegrationResources.getMailboxManager(),
+                mailboxManager,
                 memoryIntegrationResources.getEventBus(),
-                new StoreSubscriptionManager(memoryIntegrationResources.getMailboxManager().getMapperFactory(),
-                    memoryIntegrationResources.getMailboxManager().getMapperFactory(),
-                    memoryIntegrationResources.getMailboxManager().getEventBus()),
+                new StoreSubscriptionManager(mailboxManager.getMapperFactory(),
+                    mailboxManager.getMapperFactory(),
+                    mailboxManager.getEventBus()),
                 null,
                 memoryIntegrationResources.getQuotaManager(),
                 memoryIntegrationResources.getQuotaRootResolver(),
                 metricFactory),
             new ImapMetrics(metricFactory),
-            new NoopGaugeRegistry());
+            new NoopGaugeRegistry(), connectionChecks);
 
-        Configuration configuration = Configuration.builder()
-            .workingDirectory("../")
-            .configurationFromClasspath()
-            .build();
-        FileSystemImpl fileSystem = new FileSystemImpl(configuration.directories());
+        FileSystemImpl fileSystem = FileSystemImpl.forTestingWithConfigurationFromClasspath();
         imapServer.setFileSystem(fileSystem);
 
         imapServer.configure(config);
@@ -202,6 +213,59 @@ class IMAPServerTest {
         return createImapServer(ConfigLoader.getConfig(ClassLoaderUtils.getSystemResourceAsSharedStream(configurationFile)));
     }
 
+    private Set<ConnectionCheck> defaultConnectionChecks() {
+        return ImmutableSet.of(new IpConnectionCheck());
+    }
+
+    @Nested
+    class ConnectionCheckTest {
+
+        IMAPServer imapServer;
+        private final IpConnectionCheck ipConnectionCheck = new IpConnectionCheck();
+        private int port;
+
+        @BeforeEach
+        void beforeEach() throws Exception {
+            HierarchicalConfiguration<ImmutableNode> config = ConfigLoader.getConfig(ClassLoaderUtils.getSystemResourceAsSharedStream("imapServerImapConnectCheck.xml"));
+            imapServer = createImapServer(config);
+            port = imapServer.getListenAddresses().get(0).getPort();
+        }
+
+        @AfterEach
+        void tearDown() {
+            imapServer.destroy();
+        }
+
+        @Test
+        void banIpWhenBannedIpConnect() {
+            imapServer.getConnectionChecks().stream()
+                .filter(check -> check instanceof IpConnectionCheck)
+                .map(check -> (IpConnectionCheck) check)
+                .forEach(ipCheck -> ipCheck.setBannedIps(Set.of("127.0.0.1")));
+
+            assertThatThrownBy(() -> testIMAPClient.connect("127.0.0.1", port)
+                .login(USER.asString(), USER_PASS)
+                .append("INBOX", SMALL_MESSAGE));
+        }
+
+        @Test
+        void allowConnectWithUnbannedIp() throws IOException {
+            imapServer.getConnectionChecks().stream()
+                .filter(check -> check instanceof IpConnectionCheck)
+                .map(check -> (IpConnectionCheck) check)
+                .forEach(ipCheck -> ipCheck.setBannedIps(Set.of("127.0.0.2")));
+
+            testIMAPClient.connect("127.0.0.1", port)
+                .login(USER.asString(), USER_PASS)
+                .append("INBOX", SMALL_MESSAGE);
+
+            assertThat(testIMAPClient
+                .select("INBOX")
+                .readFirstMessage())
+                .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[] {21}\r\nheader: value\r\n\r\nBODY)\r\n");
+        }
+    }
+
     @Nested
     class PartialFetch {
         IMAPServer imapServer;
@@ -225,8 +289,8 @@ class IMAPServerTest {
                 .append("INBOX", SMALL_MESSAGE);
 
             assertThat(testIMAPClient
-                    .select("INBOX")
-                    .readFirstMessage())
+                .select("INBOX")
+                .readFirstMessage())
                 .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[] {21}\r\nheader: value\r\n\r\nBODY)\r\n");
         }
 
@@ -237,8 +301,8 @@ class IMAPServerTest {
                 .append("INBOX", SMALL_MESSAGE);
 
             assertThat(testIMAPClient
-                    .select("INBOX")
-                    .readFirstMessageInMailbox("BODY[]<8.20>"))
+                .select("INBOX")
+                .readFirstMessageInMailbox("BODY[]<8.20>"))
                 .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[]<8> {13}\r\nvalue\r\n\r\nBODY)\r\n");
         }
 
@@ -249,8 +313,8 @@ class IMAPServerTest {
                 .append("INBOX", SMALL_MESSAGE);
 
             assertThat(testIMAPClient
-                    .select("INBOX")
-                    .readFirstMessageInMailbox("BODY[]<8.13>"))
+                .select("INBOX")
+                .readFirstMessageInMailbox("BODY[]<8.13>"))
                 .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[]<8> {13}\r\nvalue\r\n\r\nBODY)\r\n");
         }
 
@@ -261,8 +325,8 @@ class IMAPServerTest {
                 .append("INBOX", SMALL_MESSAGE);
 
             assertThat(testIMAPClient
-                    .select("INBOX")
-                    .readFirstMessageInMailbox("BODY[]<8.12>"))
+                .select("INBOX")
+                .readFirstMessageInMailbox("BODY[]<8.12>"))
                 .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[]<8> {12}\r\nvalue\r\n\r\nBOD)\r\n");
         }
 
@@ -273,8 +337,8 @@ class IMAPServerTest {
                 .append("INBOX", SMALL_MESSAGE);
 
             assertThat(testIMAPClient
-                    .select("INBOX")
-                    .readFirstMessageInMailbox("BODY[]<8>"))
+                .select("INBOX")
+                .readFirstMessageInMailbox("BODY[]<8>"))
                 .contains("* 1 FETCH (FLAGS (\\Recent \\Seen) BODY[]<8> {13}\r\nvalue\r\n\r\nBODY)\r\n");
         }
     }
@@ -304,7 +368,7 @@ class IMAPServerTest {
                 .doesNotThrowAnyException();
 
             assertThat(testIMAPClient.select("INBOX")
-                    .readFirstMessage())
+                .readFirstMessage())
                 .contains("\r\n" + SMALL_MESSAGE + ")\r\n");
         }
 
@@ -336,7 +400,7 @@ class IMAPServerTest {
                 .doesNotThrowAnyException();
 
             assertThat(testIMAPClient.select("INBOX")
-                    .readFirstMessage())
+                .readFirstMessage())
                 .contains("\r\n" + _65K_MESSAGE + ")\r\n");
         }
 
@@ -368,7 +432,7 @@ class IMAPServerTest {
                 .doesNotThrowAnyException();
 
             assertThat(testIMAPClient.select("INBOX")
-                    .readFirstMessage())
+                .readFirstMessage())
                 .contains("\r\n" + _129K_MESSAGE + ")\r\n");
         }
     }
@@ -497,6 +561,10 @@ class IMAPServerTest {
 
     @Nested
     class Proxy {
+        private static final String CLIENT_IP = "255.255.255.254";
+        private static final String PROXY_IP = "255.255.255.255";
+        private static final String RANDOM_IP = "127.0.0.2";
+
         IMAPServer imapServer;
         private SocketChannel clientConnection;
 
@@ -517,10 +585,57 @@ class IMAPServerTest {
             imapServer.destroy();
         }
 
+        private void addBannedIps(String clientIp) {
+            imapServer.getConnectionChecks().stream()
+                .filter(check -> check instanceof IpConnectionCheck)
+                .map(check -> (IpConnectionCheck) check)
+                .forEach(ipCheck -> ipCheck.setBannedIps(Set.of(clientIp)));
+        }
+
         @Test
         void shouldNotFailOnProxyInformation() throws Exception {
             clientConnection.write(ByteBuffer.wrap(String.format("PROXY %s %s %s %d %d\r\na0 LOGIN %s %s\r\n",
-                "TCP4", "255.255.255.254", "255.255.255.255", 65535, 65535,
+                "TCP4", CLIENT_IP, PROXY_IP, 65535, 65535,
+                USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+
+            assertThat(new String(readBytes(clientConnection), StandardCharsets.US_ASCII))
+                .startsWith("a0 OK");
+        }
+
+        @Test
+        void shouldDetectAndBanByClientIP() throws IOException {
+            addBannedIps(CLIENT_IP);
+
+            // WHEN connect as CLIENT_IP to PROXY_DESTINATION via PROXY_IP
+            clientConnection.write(ByteBuffer.wrap(String.format("PROXY %s %s %s %d %d\r\na0 LOGIN %s %s\r\n",
+                "TCP4", CLIENT_IP, PROXY_IP, 65535, 65535,
+                USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+
+            // THEN LOGIN should be rejected
+            assertThat(new String(readBytes(clientConnection), StandardCharsets.US_ASCII))
+                .doesNotStartWith("a0 OK");
+        }
+
+        @Test
+        void shouldNotBanByProxyIP() throws IOException {
+            // GIVEN somehow PROXY_IP has been banned by mistake
+            addBannedIps(PROXY_IP);
+
+            clientConnection.write(ByteBuffer.wrap(String.format("PROXY %s %s %s %d %d\r\na0 LOGIN %s %s\r\n",
+                "TCP4", CLIENT_IP, PROXY_IP, 65535, 65535,
+                USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+
+            // THEN CLIENT_IP still can connect
+            assertThat(new String(readBytes(clientConnection), StandardCharsets.US_ASCII))
+                .startsWith("a0 OK");
+        }
+
+        @Test
+        void clientUsageShouldBeNormalWhenClientIPIsNotBanned() throws IOException {
+            addBannedIps(RANDOM_IP);
+
+            clientConnection.write(ByteBuffer.wrap(String.format("PROXY %s %s %s %d %d\r\na0 LOGIN %s %s\r\n",
+                "TCP4", CLIENT_IP, PROXY_IP, 65535, 65535,
                 USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
 
             assertThat(new String(readBytes(clientConnection), StandardCharsets.US_ASCII))
@@ -874,7 +989,7 @@ class IMAPServerTest {
                 .doesNotThrowAnyException();
 
             assertThat(testIMAPClient.select("INBOX")
-                    .readFirstMessage())
+                .readFirstMessage())
                 .contains("\r\n" + SMALL_MESSAGE + ")\r\n");
         }
 
@@ -887,7 +1002,7 @@ class IMAPServerTest {
                 .doesNotThrowAnyException();
 
             assertThat(testIMAPClient.select("INBOX")
-                    .readFirstMessage())
+                .readFirstMessage())
                 .contains("\r\n" + _65K_MESSAGE + ")\r\n");
         }
 
@@ -1546,6 +1661,97 @@ class IMAPServerTest {
         }
 
         @Test
+        void shouldConsiderCumulativeSizeForLiterals() throws Exception {
+            MailboxSession mailboxSession = memoryIntegrationResources.getMailboxManager().createSystemSession(USER);
+            memoryIntegrationResources.getMailboxManager()
+                .createMailbox(MailboxPath.inbox(USER), mailboxSession);
+
+            clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a0 OK"));
+            clientConnection.write(ByteBuffer.wrap("a1 SELECT INBOX\r\n".getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a1 OK"));
+
+
+            String literal = "a".repeat(32 * 1024); // 32 KB
+            clientConnection.write(ByteBuffer.wrap(("a2 SEARCH CHARSET UTF-8 TO {" + literal.length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+
+            assertThatThrownBy(() -> {
+                    for (int i = 0; i < 7000; i++) {
+                        clientConnection.write(ByteBuffer.wrap((literal + " TO {" + literal.length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+                    }
+                    clientConnection.write(ByteBuffer.wrap((literal + " ALL\r\n").getBytes(StandardCharsets.UTF_8)));
+                }).isInstanceOf(IOException.class);
+        }
+
+        @Test
+        void shouldRejectTooManyLiterals() throws Exception {
+            MailboxSession mailboxSession = memoryIntegrationResources.getMailboxManager().createSystemSession(USER);
+            memoryIntegrationResources.getMailboxManager()
+                .createMailbox(MailboxPath.inbox(USER), mailboxSession);
+
+            clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a0 OK"));
+            clientConnection.write(ByteBuffer.wrap("a1 SELECT INBOX\r\n".getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a1 OK"));
+
+
+            String literal = "a";
+            clientConnection.write(ByteBuffer.wrap(("a2 SEARCH CHARSET UTF-8 TO {" + literal.length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+
+            try {
+                for (int i = 0; i < 7000; i++) {
+                    clientConnection.write(ByteBuffer.wrap((literal + " TO {" + literal.length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+                }
+                clientConnection.write(ByteBuffer.wrap((literal + " ALL\r\n").getBytes(StandardCharsets.UTF_8)));
+            } catch (IOException e) {
+                // ignore
+            }
+            readStringUntil(clientConnection, s -> s.contains(("a2 BAD ")));
+        }
+
+        @Test
+        void shouldRejectLongLineAfterLiteral() throws Exception {
+            MailboxSession mailboxSession = memoryIntegrationResources.getMailboxManager().createSystemSession(USER);
+            memoryIntegrationResources.getMailboxManager()
+                .createMailbox(MailboxPath.inbox(USER), mailboxSession);
+
+            clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a0 OK"));
+            clientConnection.write(ByteBuffer.wrap("a1 SELECT INBOX\r\n".getBytes(StandardCharsets.UTF_8)));
+            readStringUntil(clientConnection, s -> s.contains("a1 OK"));
+
+            String litteral = "a".repeat(8);
+            clientConnection.write(ByteBuffer.wrap(("a2 SEARCH CHARSET UTF-8 TO {" + litteral.length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+            String longLine = " ALL".repeat(1024 * 1024);
+            clientConnection.write(ByteBuffer.wrap((litteral + longLine + "\r\n").getBytes(StandardCharsets.UTF_8)));
+
+            readStringUntil(clientConnection, s -> s.contains(("a2 BAD ")));
+        }
+
+        @Test
+        void shouldRejectLongLineAfterLiteralWhenLogin() throws Exception {
+            MailboxSession mailboxSession = memoryIntegrationResources.getMailboxManager().createSystemSession(USER);
+            memoryIntegrationResources.getMailboxManager()
+                .createMailbox(MailboxPath.inbox(USER), mailboxSession);
+
+            clientConnection.write(ByteBuffer.wrap(("a0 LOGIN {" + USER.asString().length() + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+            clientConnection.write(ByteBuffer.wrap((USER.asString() + " " + "0123456789".repeat(1024 * 1024)).getBytes()));
+            readStringUntil(clientConnection, s -> s.contains("a0 BAD"));
+        }
+
+        @Test
+        void shouldRejectLongLiteralsWhenUnauthenticated() throws Exception {
+            MailboxSession mailboxSession = memoryIntegrationResources.getMailboxManager().createSystemSession(USER);
+            memoryIntegrationResources.getMailboxManager()
+                .createMailbox(MailboxPath.inbox(USER), mailboxSession);
+
+            clientConnection.write(ByteBuffer.wrap(("a0 LOGIN " + USER.asString() + " {" + (10 * 1024) + "+}\r\n").getBytes(StandardCharsets.UTF_8)));
+            clientConnection.write(ByteBuffer.wrap(("0123456789".repeat(1024) + " \r\n").getBytes()));
+
+            readStringUntil(clientConnection, s -> s.contains(("a0 BAD ")));
+        }
+
+        @Test
         void searchingShouldSupportMultipleUTF8Criteria() throws Exception {
             String host = "127.0.0.1";
             Properties props = new Properties();
@@ -1558,9 +1764,9 @@ class IMAPServerTest {
 
             SearchTerm subjectTerm = new SubjectTerm("java培训");
             SearchTerm fromTerm = new FromStringTerm("采购");
-            SearchTerm recipientTerm = new RecipientStringTerm(Message.RecipientType.TO,"张三");
-            SearchTerm ccRecipientTerm = new RecipientStringTerm(Message.RecipientType.CC,"李四");
-            SearchTerm bccRecipientTerm = new RecipientStringTerm(Message.RecipientType.BCC,"王五");
+            SearchTerm recipientTerm = new RecipientStringTerm(Message.RecipientType.TO, "张三");
+            SearchTerm ccRecipientTerm = new RecipientStringTerm(Message.RecipientType.CC, "李四");
+            SearchTerm bccRecipientTerm = new RecipientStringTerm(Message.RecipientType.BCC, "王五");
             SearchTerm bodyTerm = new BodyTerm("天天向上");
             SearchTerm[] searchTerms = new SearchTerm[6];
             searchTerms[0] = subjectTerm;
@@ -1632,7 +1838,7 @@ class IMAPServerTest {
             inbox = memoryIntegrationResources.getMailboxManager().getMailbox(MailboxPath.inbox(USER), mailboxSession);
 
             SSLContext ctx = SSLContext.getInstance("TLS");
-            ctx.init(null, new TrustManager[] { new BlindTrustManager() }, null);
+            ctx.init(null, new TrustManager[]{new BlindTrustManager()}, null);
             clientConnection = ctx.getSocketFactory().createSocket();
             clientConnection.connect(new InetSocketAddress(LOCALHOST_IP, port));
             byte[] buffer = new byte[8193];
@@ -1780,7 +1986,7 @@ class IMAPServerTest {
             inbox = memoryIntegrationResources.getMailboxManager().getMailbox(MailboxPath.inbox(USER), mailboxSession);
 
             SSLContext ctx = SSLContext.getInstance("TLS");
-            ctx.init(null, new TrustManager[] { new BlindTrustManager() }, null);
+            ctx.init(null, new TrustManager[]{new BlindTrustManager()}, null);
             clientConnection = ctx.getSocketFactory().createSocket();
             clientConnection.connect(new InetSocketAddress(LOCALHOST_IP, port));
             byte[] buffer = new byte[8193];
@@ -1926,7 +2132,7 @@ class IMAPServerTest {
 
             Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
                 assertThat(readStringUntil(clientConnection, s -> s.contains("+ Idling")))
-                .isNotNull());
+                    .isNotNull());
         }
 
         @Test
@@ -2010,7 +2216,7 @@ class IMAPServerTest {
 
             Awaitility.await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
                 assertThat(readStringUntil(clientConnection, s -> s.contains("* 1 EXISTS")))
-                .isNotNull());
+                    .isNotNull());
         }
     }
 
@@ -2399,6 +2605,34 @@ class IMAPServerTest {
             // Then the FETCH
             readStringUntil(clientConnection, s -> s.contains("A2 OK FETCH completed."));
         }
+
+        @Test
+        void fetchShouldBackPressureWhenNoRead() throws Exception {
+            String msgIn = "MIME-Version: 1.0\r\n\r\nCONTENT\r\n\r\n" + "0123456789\r\n0123456789\r\n0123456789\r\n".repeat(1024);
+            IntStream.range(0, 500)
+                .forEach(Throwing.intConsumer(i -> inbox.appendMessage(MessageManager.AppendCommand.builder()
+                    .build(msgIn), mailboxSession)));
+            AtomicInteger loaded = new AtomicInteger(0);
+            MessageManager inboxSpy = spy(inbox);
+            doReturn(Mono.just(inboxSpy)).when(mailboxManager).getMailboxReactive(eq(MailboxPath.inbox(USER)), any());
+            doReturn(Mono.just(inboxSpy)).when(mailboxManager).getMailboxReactive(eq(inbox.getMailboxEntity().getMailboxId()), any());
+            doAnswer((Answer<Object>) invocationOnMock -> Flux.from(inbox.getMessagesReactive(invocationOnMock.getArgument(0), invocationOnMock.getArgument(1), invocationOnMock.getArgument(2)))
+                .doOnNext(any -> loaded.incrementAndGet())).when(inboxSpy).getMessagesReactive(any(), any(), any());
+
+            clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
+            readBytes(clientConnection);
+
+            clientConnection.write(ByteBuffer.wrap(("A1 SELECT INBOX\r\n").getBytes(StandardCharsets.UTF_8)));
+            // Select completes first
+            readStringUntil(clientConnection, s -> s.contains("A1 OK [READ-WRITE] SELECT completed."));
+            clientConnection.write(ByteBuffer.wrap(("A2 UID FETCH 1:500 (BODY[])\r\n").getBytes(StandardCharsets.UTF_8)));
+
+            Thread.sleep(1000);
+
+            assertThat(loaded.get()).isLessThan(500);
+            readStringUntil(clientConnection, s -> s.contains("A2 OK FETCH completed."));
+            assertThat(loaded.get()).isEqualTo(500);
+        }
     }
 
     private byte[] readBytes(SocketChannel channel) throws IOException {
@@ -2678,8 +2912,8 @@ class IMAPServerTest {
                 .getMailboxEntity().getUidValidity();
 
             inbox.delete(ImmutableList.of(MessageUid.of(10), MessageUid.of(11), MessageUid.of(12),
-                    MessageUid.of(25), MessageUid.of(26),
-                    MessageUid.of(32)), mailboxSession);
+                MessageUid.of(25), MessageUid.of(26),
+                MessageUid.of(32)), mailboxSession);
 
             clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
             readBytes(clientConnection);
@@ -2705,8 +2939,8 @@ class IMAPServerTest {
                 .getMailboxEntity().getUidValidity();
 
             inbox.delete(ImmutableList.of(MessageUid.of(10), MessageUid.of(11), MessageUid.of(12),
-                    MessageUid.of(25), MessageUid.of(26),
-                    MessageUid.of(32)), mailboxSession);
+                MessageUid.of(25), MessageUid.of(26),
+                MessageUid.of(32)), mailboxSession);
 
             clientConnection.write(ByteBuffer.wrap(String.format("a0 LOGIN %s %s\r\n", USER.asString(), USER_PASS).getBytes(StandardCharsets.UTF_8)));
             readBytes(clientConnection);

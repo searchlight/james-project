@@ -23,8 +23,8 @@ import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.time.Duration;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxManager;

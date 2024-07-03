@@ -32,8 +32,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.james.imap.api.ImapConstants;
 import org.apache.james.imap.message.response.FetchResponse;
@@ -215,7 +215,6 @@ public class FetchResponseEncoder implements ImapResponseEncoder<FetchResponse> 
             for (String name : names) {
                 final String value = params.get(name);
                 if (value == null) {
-                    LOGGER.warn("Disposition parameter name has no value.");
                     LOGGER.debug("Disposition parameter {} has no matching value", name);
                 } else {
                     composer.quote(name);

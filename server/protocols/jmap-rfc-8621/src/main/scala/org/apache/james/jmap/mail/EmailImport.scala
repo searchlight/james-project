@@ -19,20 +19,32 @@
 
 package org.apache.james.jmap.mail
 
-import org.apache.james.jmap.core.{AccountId, SetError, UTCDate, UuidState}
-import org.apache.james.jmap.method.WithAccountId
+import java.time.ZonedDateTime
+
+import org.apache.james.jmap.core.{AccountId, JmapRfc8621Configuration, SetError, UTCDate, UuidState}
+import org.apache.james.jmap.method.{ValidableRequest, WithAccountId}
 import org.apache.james.mailbox.model.MailboxId
+import reactor.core.scala.publisher.SMono
 
 case class EmailImportRequest(accountId: AccountId,
-                              emails: Map[EmailCreationId, EmailImport]) extends WithAccountId
+                              emails: Map[EmailCreationId, EmailImport]) extends WithAccountId with ValidableRequest {
+  override def validate(configuration: JmapRfc8621Configuration): Either[Exception, ValidableRequest] =
+    if (emails.size > configuration.jmapEmailGetFullMaxSize.asLong()) {
+      Left(RequestTooLargeException(s"Too many items in an email parse request. " +
+        s"Got ${emails.size} items instead of maximum ${configuration.jmapEmailGetFullMaxSize.asLong()}."))
+    } else {
+      scala.Right(this)
+    }
+}
 
 case class EmailImport(blobId: BlobId,
                        mailboxIds: MailboxIds,
-                       keywords: Keywords,
-                       receivedAt: UTCDate) {
-  def validate: Either[IllegalArgumentException, ValidatedEmailImport] = mailboxIds match {
-    case MailboxIds(List(mailboxId)) => scala.Right(ValidatedEmailImport(blobId, mailboxId, keywords, receivedAt))
-    case _ => Left(new IllegalArgumentException("Email/import so far only supports a single mailboxId"))
+                       keywords: Option[Keywords],
+                       receivedAt: Option[UTCDate]) {
+  def validate: SMono[ValidatedEmailImport] = mailboxIds match {
+    case MailboxIds(List(mailboxId)) => SMono.just(ValidatedEmailImport(blobId, mailboxId, keywords.getOrElse(Keywords(Set())),
+      receivedAt.getOrElse(UTCDate(ZonedDateTime.now()))))
+    case _ => SMono.error(new IllegalArgumentException("Email/import so far only supports a single mailboxId"))
   }
 }
 

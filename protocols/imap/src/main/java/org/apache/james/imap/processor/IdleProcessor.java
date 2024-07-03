@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.events.Event;
 import org.apache.james.events.EventListener;
@@ -86,7 +86,7 @@ public class IdleProcessor extends AbstractMailboxProcessor<IdleRequest> impleme
 
         final AtomicBoolean idleActive = new AtomicBoolean(true);
 
-        session.pushLineHandler((session1, data) -> {
+        session.pushLineHandler((session1, data) -> Mono.fromRunnable(() -> {
             String line;
             if (data.length > 2) {
                 line = new String(data, 0, data.length - 2);
@@ -112,7 +112,7 @@ public class IdleProcessor extends AbstractMailboxProcessor<IdleRequest> impleme
             }
             session1.popLineHandler();
             idleActive.set(false);
-        });
+        }));
 
         // Check if we should send heartbeats
         if (enableIdle) {

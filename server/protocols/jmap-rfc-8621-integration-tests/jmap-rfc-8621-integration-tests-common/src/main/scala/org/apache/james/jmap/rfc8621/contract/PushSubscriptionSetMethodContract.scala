@@ -19,7 +19,7 @@
 
 package org.apache.james.jmap.rfc8621.contract
 
-import java.net.URL
+import java.net.URI
 import java.security.KeyPair
 import java.security.interfaces.ECPublicKey
 import java.time.ZonedDateTime
@@ -34,7 +34,7 @@ import com.google.inject.multibindings.Multibinder
 import io.netty.handler.codec.http.HttpHeaderNames.ACCEPT
 import io.restassured.RestAssured.{`given`, requestSpecification}
 import io.restassured.http.ContentType.JSON
-import javax.inject.Inject
+import jakarta.inject.Inject
 import net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson
 import org.apache.http.HttpStatus.SC_OK
 import org.apache.james.GuiceJamesServer
@@ -47,7 +47,7 @@ import org.apache.james.jmap.core.UTCDate
 import org.apache.james.jmap.http.UserCredential
 import org.apache.james.jmap.rfc8621.contract.Fixture.{ACCEPT_RFC8621_VERSION_HEADER, BOB, BOB_PASSWORD, DOMAIN, authScheme, baseRequestSpecBuilder}
 import org.apache.james.jmap.rfc8621.contract.PushSubscriptionSetMethodContract.TIME_FORMATTER
-import org.apache.james.utils.{DataProbeImpl, GuiceProbe}
+import org.apache.james.utils.{DataProbeImpl, GuiceProbe, UpdatableTickingClock}
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.SoftAssertions
 import org.junit.jupiter.api.{BeforeEach, Test}
@@ -199,7 +199,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
 
@@ -258,7 +258,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
 
@@ -318,7 +318,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
 
@@ -378,7 +378,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
 
@@ -580,12 +580,12 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
     val pushSubscription2 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d087"),
         types = Seq(EmailTypeName))
 
@@ -640,7 +640,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
     probe.validatePushSubscription(BOB, pushSubscription1.id)
@@ -687,21 +687,64 @@ trait PushSubscriptionSetMethodContract {
   }
 
   @Test
+  def getShouldNotReturnExpiredSubscriptionAndTriggerTheDeletion(server: GuiceJamesServer, clock: UpdatableTickingClock): Unit = {
+    val probe = server.getProbe(classOf[PushSubscriptionProbe])
+    val pushSubscription1 = probe
+      .createPushSubscription(username = BOB,
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
+        deviceId = DeviceClientId("12c6d086"),
+        types = Seq(MailboxTypeName))
+    probe.validatePushSubscription(BOB, pushSubscription1.id)
+
+    clock.setInstant(ZonedDateTime.now().plusDays(100).toInstant)
+
+    assertThatJson(`given`
+      .body("""{
+              |    "using": ["urn:ietf:params:jmap:core"],
+              |    "methodCalls": [ [ "PushSubscription/get", { }, "c1" ] ]
+              |}""".stripMargin)
+      .when
+        .post
+      .`then`
+        .statusCode(SC_OK)
+        .contentType(JSON)
+        .extract
+        .body
+        .asString)
+        .isEqualTo(
+          s"""{
+             |    "sessionState": "${SESSION_STATE.value}",
+             |    "methodResponses": [
+             |        [
+             |            "PushSubscription/get",
+             |            {
+             |                "list": []
+             |            },
+             |            "c1"
+             |        ]
+             |    ]
+             |}""".stripMargin)
+
+    assertThat(probe.retrievePushSubscription(BOB, pushSubscription1.id))
+      .isNull()
+  }
+
+  @Test
   def getByIdShouldReturnRecords(server: GuiceJamesServer): Unit = {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
     val pushSubscription2 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d087"),
         types = Seq(EmailTypeName))
     val pushSubscription3 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d088"),
         types = Seq(EmailTypeName))
 
@@ -758,7 +801,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
 
@@ -840,12 +883,12 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName))
     val pushSubscription2 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d087"),
         types = Seq(EmailTypeName))
 
@@ -1476,7 +1519,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -1577,7 +1620,7 @@ trait PushSubscriptionSetMethodContract {
            |                "notCreated": {
            |                    "4f29": {
            |                        "type": "invalidArguments",
-           |                        "description": "java.security.spec.InvalidKeySpecException: java.security.InvalidKeyException: IOException: null"
+           |                        "description": "java.security.spec.InvalidKeySpecException: java.security.InvalidKeyException: Unable to decode key"
            |                    }
            |                }
            |            },
@@ -1650,22 +1693,22 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d081"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
     val pushSubscription2 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d082"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
     val pushSubscription3 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d083"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
     val pushSubscription4 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d084"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -1754,7 +1797,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -1818,7 +1861,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -1879,7 +1922,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -1940,7 +1983,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -2002,7 +2045,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -2063,7 +2106,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL()),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -2537,7 +2580,7 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 
@@ -2682,12 +2725,12 @@ trait PushSubscriptionSetMethodContract {
     val probe = server.getProbe(classOf[PushSubscriptionProbe])
     val pushSubscription1 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d086")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d086").toURL),
         deviceId = DeviceClientId("12c6d086"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
     val pushSubscription2 = probe
       .createPushSubscription(username = BOB,
-        url = PushSubscriptionServerURL(new URL("https://example.com/push/?device=X8980fc&client=12c6d087")),
+        url = PushSubscriptionServerURL(new URI("https://example.com/push/?device=X8980fc&client=12c6d087").toURL),
         deviceId = DeviceClientId("12c6d087"),
         types = Seq(MailboxTypeName, EmailDeliveryTypeName, EmailTypeName))
 

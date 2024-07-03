@@ -84,6 +84,22 @@ openssl rand -base64 64
 generate salt with : openssl rand -hex 16
 ....
 
+AES blob store supports the following system properties that could be configured in `jvm.properties`:
+
+....
+# Threshold from which we should buffer the blob to a file upon encrypting
+# Unit supported: K, M, G, default to no unit
+james.blob.aes.file.threshold.encrypt=100K
+
+# Threshold from which we should buffer the blob to a file upon decrypting
+# Unit supported: K, M, G, default to no unit
+james.blob.aes.file.threshold.decrypt=256K
+
+# Maximum size of a blob. Larger blobs will be rejected.
+# Unit supported: K, M, G, default to no unit
+james.blob.aes.blob.max.size=100M
+....
+
 === Cassandra BlobStore Cache
 
 A Cassandra cache can be enabled to reduce latency when reading small blobs frequently.
@@ -143,6 +159,10 @@ Maximum size of stored objects expressed in bytes.
 | objectstorage.s3.truststore.algorithm
 | optional: Use this specific trust store algorithm; default SunX509
 
+| objectstorage.s3.trustall
+| optional: boolean. Defaults to false. Cannot be set to true with other trustore options. Wether James should validate
+S3 endpoint SSL certificates.
+
 | objectstorage.s3.read.timeout
 | optional: HTTP read timeout. duration, default value being second. Leaving it empty relies on S3 driver defaults.
 
@@ -156,6 +176,16 @@ Maximum size of stored objects expressed in bytes.
 | optional: Object read in memory will be rejected if they exceed the size limit exposed here. Size, exemple `100M`.
 Supported units: K, M, G, defaults to B if no unit is specified. If unspecified, big object won't be prevented
 from being loaded in memory. This settings complements protocol limits.
+
+| objectstorage.s3.upload.retry.maxAttempts
+| optional: Integer. Default is zero. This property specifies the maximum number of retry attempts allowed for failed upload operations.
+
+| objectstorage.s3.upload.retry.backoffDurationMillis
+| optional: Long (Milliseconds). Default is 10 (miliseconds).
+Only takes effect when the "objectstorage.s3.upload.retry.maxAttempts" property is declared.
+This property determines the duration (in milliseconds) to wait between retry attempts for failed upload operations.
+This delay is known as backoff. The jitter factor is 0.5
+
 |===
 
 ==== Buckets Configuration

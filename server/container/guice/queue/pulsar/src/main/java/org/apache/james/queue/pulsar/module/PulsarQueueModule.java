@@ -22,9 +22,9 @@ package org.apache.james.queue.pulsar.module;
 import java.io.FileNotFoundException;
 import java.time.Clock;
 
-import javax.inject.Named;
-import javax.inject.Singleton;
-import javax.mail.internet.MimeMessage;
+import jakarta.inject.Named;
+import jakarta.inject.Singleton;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.ex.ConfigurationException;

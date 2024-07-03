@@ -26,11 +26,12 @@ import java.security.cert.CertificateException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
-import javax.inject.Provider;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
+
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.time.DurationFormatUtils;
@@ -44,9 +45,9 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.apache.http.ssl.TrustStrategy;
-import org.apache.james.backends.opensearch.json.jackson.JacksonJsonpMapper;
 import org.apache.james.util.concurrent.NamedThreadFactory;
 import org.opensearch.client.RestClient;
+import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchAsyncClient;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.slf4j.Logger;

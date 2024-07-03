@@ -35,7 +35,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.function.Function;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.backends.cassandra.utils.CassandraAsyncExecutor;
 import org.apache.james.blob.api.BlobId;
@@ -202,10 +202,11 @@ public class UploadDAO {
             .map(rowToUploadRepresentation());
     }
 
-    public Mono<Void> delete(Username username, UploadId uploadId) {
+    public Mono<Boolean> delete(Username username, UploadId uploadId) {
         return executor.executeVoid(delete.bind()
             .setString(USER, username.asString())
-            .setUuid(ID, uploadId.getId()));
+            .setUuid(ID, uploadId.getId()))
+            .thenReturn(true);
     }
 
     public Flux<UploadRepresentation> all() {

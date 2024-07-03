@@ -30,9 +30,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.GaugeRegistry;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,6 +111,10 @@ public class ReactorRabbitMQChannelPool implements ChannelPool, Startable {
 
         @Override
         public void close(int closeCode, String closeMessage) throws IOException, TimeoutException {
+            // https://www.rabbitmq.com/amqp-0-9-1-reference.html#domain.reply-code
+            if (closeCode >= 300) {
+                LOGGER.warn("Closing channel {} code:{} message:'{}'", getChannelNumber(), closeCode, closeMessage);
+            }
             delegate.close(closeCode, closeMessage);
         }
 
@@ -120,6 +125,10 @@ public class ReactorRabbitMQChannelPool implements ChannelPool, Startable {
 
         @Override
         public void abort(int closeCode, String closeMessage) throws IOException {
+            // https://www.rabbitmq.com/amqp-0-9-1-reference.html#domain.reply-code
+            if (closeCode >= 300) {
+                LOGGER.warn("Closing channel {} code:{} message:'{}'", getChannelNumber(), closeCode, closeMessage);
+            }
             delegate.abort(closeCode, closeMessage);
         }
 
@@ -663,7 +672,8 @@ public class ReactorRabbitMQChannelPool implements ChannelPool, Startable {
     private final MetricFactory metricFactory;
     private Sender sender;
 
-    public ReactorRabbitMQChannelPool(Mono<Connection> connectionMono, Configuration configuration, MetricFactory metricFactory) {
+    public ReactorRabbitMQChannelPool(Mono<Connection> connectionMono, Configuration configuration, MetricFactory metricFactory,
+                                      GaugeRegistry gaugeRegistry) {
         this.connectionMono = connectionMono;
         this.configuration = configuration;
         this.metricFactory = metricFactory;
@@ -689,6 +699,11 @@ public class ReactorRabbitMQChannelPool implements ChannelPool, Startable {
             .then()
             .subscribeOn(Schedulers.boundedElastic()))
             .buildPool();
+
+        gaugeRegistry.register("rabbitmq.channels.acquired.size", () -> newPool.metrics().acquiredSize());
+        gaugeRegistry.register("rabbitmq.channels.allocated.size", () -> newPool.metrics().allocatedSize());
+        gaugeRegistry.register("rabbitmq.channels.idle.size", () -> newPool.metrics().idleSize());
+        gaugeRegistry.register("rabbitmq.channels.pending.aquire.size", () -> newPool.metrics().pendingAcquireSize());
     }
 
     private Mono<? extends Channel> openChannel(Connection connection) {

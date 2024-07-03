@@ -22,10 +22,12 @@ import static org.apache.james.smtpserver.netty.SMTPServer.AuthenticationAnnounc
 import static org.apache.james.smtpserver.netty.SMTPServer.AuthenticationAnnounceMode.NEVER;
 
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -48,6 +50,8 @@ import org.apache.james.smtpserver.jmx.JMXHandlersLoader;
 import org.apache.james.util.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.ImmutableSet;
 
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
@@ -107,7 +111,7 @@ public class SMTPServer extends AbstractProtocolAsyncServer implements SMTPServe
             if (haveOidcProperties) {
                 try {
                     return Optional.of(OidcSASLConfiguration.parse(configuration.configurationAt(OIDC_PATH)));
-                } catch (MalformedURLException exception) {
+                } catch (MalformedURLException | URISyntaxException exception) {
                    throw new ConfigurationException("Failed to retrieve oauth component", exception);
                 }
             } else {
@@ -180,10 +184,11 @@ public class SMTPServer extends AbstractProtocolAsyncServer implements SMTPServe
      */
     private final SMTPConfiguration theConfigData = new SMTPHandlerConfigurationDataImpl();
     private final SmtpMetrics smtpMetrics;
+    private Set<String> disabledFeatures = ImmutableSet.of();
 
     private boolean addressBracketsEnforcement = true;
 
-    private boolean verifyIdentity;
+    private SMTPConfiguration.SenderVerificationMode verifyIdentity;
 
     private DNSService dns;
     private String authorizedAddresses;
@@ -243,7 +248,9 @@ public class SMTPServer extends AbstractProtocolAsyncServer implements SMTPServe
 
             addressBracketsEnforcement = configuration.getBoolean("addressBracketsEnforcement", true);
 
-            verifyIdentity = configuration.getBoolean("verifyIdentity", true);
+            verifyIdentity = SMTPConfiguration.SenderVerificationMode.parse(configuration.getString("verifyIdentity", "strict"));
+
+            disabledFeatures = ImmutableSet.copyOf(configuration.getStringArray("disabledFeatures"));
         }
     }
 
@@ -318,7 +325,7 @@ public class SMTPServer extends AbstractProtocolAsyncServer implements SMTPServe
          * Return true if the username and mail from must match for a authorized
          * user
          */
-        public boolean verifyIdentity() {
+        public SenderVerificationMode verifyIdentity() {
             return SMTPServer.this.verifyIdentity;
         }
 
@@ -335,6 +342,11 @@ public class SMTPServer extends AbstractProtocolAsyncServer implements SMTPServe
         @Override
         public Optional<OidcSASLConfiguration> saslConfiguration() {
             return authenticationConfiguration.getSaslConfiguration();
+        }
+
+        @Override
+        public Set<String> disabledFeatures() {
+            return disabledFeatures;
         }
     }
 

@@ -25,7 +25,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.mailbox.MailboxSession;
@@ -54,6 +54,7 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.util.function.Tuple2;
 
 public interface MessageStorer {
@@ -105,6 +106,7 @@ public interface MessageStorer {
             return mapperFactory.getMessageMapper(session)
                 .executeReactive(
                     storeAttachments(messageId, content, maybeMessage, session)
+                        .subscribeOn(Schedulers.boundedElastic())
                         .zipWith(threadIdGuessingAlgorithm.guessThreadIdReactive(messageId, mimeMessageId, inReplyTo, references, subject, session))
                         .flatMap(Throwing.function((Tuple2<List<MessageAttachmentMetadata>, ThreadId> pair) -> {
                             List<MessageAttachmentMetadata> attachments = pair.getT1();
@@ -118,10 +120,10 @@ public interface MessageStorer {
         }
 
         private Mono<List<MessageAttachmentMetadata>> storeAttachments(MessageId messageId, Content messageContent, Optional<Message> maybeMessage, MailboxSession session) {
-            MessageParser.ParsingResult attachments = extractAttachments(messageContent, maybeMessage);
-            return attachmentMapperFactory.getAttachmentMapper(session)
-                .storeAttachmentsReactive(attachments.getAttachments(), messageId)
-                .doFinally(any -> attachments.dispose());
+            return Mono.usingWhen(Mono.fromCallable(() -> extractAttachments(messageContent, maybeMessage)),
+                attachments -> attachmentMapperFactory.getAttachmentMapper(session)
+                    .storeAttachmentsReactive(attachments.getAttachments(), messageId),
+                parsingResults -> Mono.fromRunnable(parsingResults::dispose).subscribeOn(Schedulers.boundedElastic()));
         }
 
         private MessageParser.ParsingResult extractAttachments(Content contentIn, Optional<Message> maybeMessage) {

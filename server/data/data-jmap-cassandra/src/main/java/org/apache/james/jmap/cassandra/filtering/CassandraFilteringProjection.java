@@ -29,9 +29,8 @@ import static org.apache.james.jmap.cassandra.filtering.CassandraFilteringProjec
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.backends.cassandra.utils.CassandraAsyncExecutor;
 import org.apache.james.core.Username;
@@ -41,6 +40,7 @@ import org.apache.james.eventsourcing.EventId;
 import org.apache.james.eventsourcing.EventWithState;
 import org.apache.james.eventsourcing.ReactiveSubscriber;
 import org.apache.james.jmap.api.filtering.Rule;
+import org.apache.james.jmap.api.filtering.RuleDTO;
 import org.apache.james.jmap.api.filtering.Rules;
 import org.apache.james.jmap.api.filtering.Version;
 import org.apache.james.jmap.api.filtering.impl.EventSourcingFilteringManagement;
@@ -54,6 +54,7 @@ import com.datastax.oss.driver.api.core.cql.Row;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.ImmutableList;
 
 import reactor.core.publisher.Mono;
@@ -82,7 +83,7 @@ public class CassandraFilteringProjection implements EventSourcingFilteringManag
             .whereColumn(AGGREGATE_ID).isEqualTo(bindMarker(AGGREGATE_ID))
             .build());
 
-        objectMapper = new ObjectMapper();
+        objectMapper = new ObjectMapper().registerModule(new Jdk8Module());
     }
 
     @Override
@@ -107,7 +108,7 @@ public class CassandraFilteringProjection implements EventSourcingFilteringManag
     }
 
     @Override
-    public Optional<ReactiveSubscriber> subscriber(Function<Username, Publisher<Rules>> ruleLoader) {
+    public Optional<ReactiveSubscriber> subscriber() {
         return Optional.of(this);
     }
 

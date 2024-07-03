@@ -25,17 +25,20 @@ import cats.implicits._
 import com.google.common.net.MediaType
 import com.google.common.net.MediaType.{HTML_UTF_8, PLAIN_TEXT_UTF_8}
 import eu.timepit.refined
+import org.apache.james.core.MailAddress
 import org.apache.james.jmap.api.model.Size.Size
+import org.apache.james.jmap.api.model.{EmailAddress, EmailerName}
 import org.apache.james.jmap.core.Id.{Id, IdConstraint}
 import org.apache.james.jmap.core.{AccountId, SetError, UTCDate, UuidState}
 import org.apache.james.jmap.mail.Disposition.INLINE
-import org.apache.james.jmap.method.WithAccountId
+import org.apache.james.jmap.mail.EmailCreationRequest.KEYWORD_DRAFT
+import org.apache.james.jmap.method.{SetRequest, WithAccountId}
 import org.apache.james.jmap.routes.{Blob, BlobResolvers}
 import org.apache.james.mailbox.MailboxSession
 import org.apache.james.mailbox.model.{Cid, MessageId}
 import org.apache.james.mime4j.codec.EncoderUtil.Usage
 import org.apache.james.mime4j.codec.{DecodeMonitor, EncoderUtil}
-import org.apache.james.mime4j.dom.address.Mailbox
+import org.apache.james.mime4j.dom.address.{AddressList, MailboxList, Mailbox => Mime4jMailbox}
 import org.apache.james.mime4j.dom.field.{ContentIdField, ContentTypeField, FieldName}
 import org.apache.james.mime4j.dom.{Entity, Message}
 import org.apache.james.mime4j.field.{ContentIdFieldImpl, Fields}
@@ -73,9 +76,19 @@ case class ClientPartId(id: Id)
 
 case class ClientBody(partId: ClientPartId, `type`: Type)
 
+case class ClientEmailBodyValueWithoutHeaders(value: String,
+                                isEncodingProblem: Option[IsEncodingProblem],
+                                isTruncated: Option[IsTruncated]) {
+  def withHeaders(specificHeaders: List[EmailHeader]): ClientEmailBodyValue =
+    ClientEmailBodyValue(value, isEncodingProblem, isTruncated, specificHeaders)
+}
+
 case class ClientEmailBodyValue(value: String,
                                 isEncodingProblem: Option[IsEncodingProblem],
-                                isTruncated: Option[IsTruncated])
+                                isTruncated: Option[IsTruncated],
+                                specificHeaders: List[EmailHeader])
+
+case class ClientBodyPart(value: String, specificHeaders: List[EmailHeader])
 
 object ClientCid {
   def of(entity: Entity): Option[Cid] =
@@ -102,16 +115,66 @@ case class Attachment(blobId: BlobId,
   def isInline: Boolean = disposition.contains(INLINE)
 }
 
+case class UncheckedEmail(value: String) extends AnyVal
+
+object UncheckedEmailAddress {
+  def from(addressList: AddressList): List[UncheckedEmailAddress] = Option(addressList)
+    .map(addressList => from(addressList.flatten()))
+    .getOrElse(List())
+
+  def from(addressList: MailboxList): List[UncheckedEmailAddress] =
+    addressList.asScala
+      .toList
+      .filter(address => !address.getAddress.equals(">"))  // Temporary fix for https://github.com/linagora/james-project/issues/5086
+      .map(mailbox => UncheckedEmailAddress(
+        name = Option(mailbox.getName).map(EmailerName.from),
+        email = UncheckedEmail(mailbox.getAddress)))
+}
+case class UncheckedEmailAddress(name: Option[EmailerName], email: UncheckedEmail) {
+  def asMime4JMailbox: Mime4jMailbox = {
+    val parts = email.value.split('@')
+    val domainPart: String = parts match {
+      case Array(_, domain) => domain
+      case _ => ""
+    }
+    Some(email.value.split('@'))
+      .map(parts => new Mime4jMailbox(
+        name.map(_.value).orNull,
+        parts.head,
+        domainPart))
+      .get
+  }
+
+  def validate: Either[IllegalArgumentException, EmailAddress] =
+    Try(new MailAddress(email.value))
+      .map(email => EmailAddress(name, email))
+      .toEither match {
+      case scala.Right(value) => scala.Right(value)
+      case Left(e) => Left(new IllegalArgumentException(s"Invalid email address `${email.value}`", e))
+    }
+}
+
+case class UncheckedAddressesHeaderValue(value: List[UncheckedEmailAddress]) {
+  def asMime4JMailboxList: Option[List[Mime4jMailbox]] = Some(value.map(_.asMime4JMailbox)).filter(_.nonEmpty)
+
+  def validate: Either[IllegalArgumentException, AddressesHeaderValue] = value.map(_.validate)
+    .sequence
+    .map(l => AddressesHeaderValue(l))
+}
+
+object EmailCreationRequest {
+  val KEYWORD_DRAFT: Keyword = org.apache.james.jmap.mail.Keyword("$draft")
+}
 case class EmailCreationRequest(mailboxIds: MailboxIds,
                                 messageId: Option[MessageIdsHeaderValue],
                                 references: Option[MessageIdsHeaderValue],
                                 inReplyTo: Option[MessageIdsHeaderValue],
-                                from: Option[AddressesHeaderValue],
-                                to: Option[AddressesHeaderValue],
-                                cc: Option[AddressesHeaderValue],
-                                bcc: Option[AddressesHeaderValue],
-                                sender: Option[AddressesHeaderValue],
-                                replyTo: Option[AddressesHeaderValue],
+                                from: Option[UncheckedAddressesHeaderValue],
+                                to: Option[UncheckedAddressesHeaderValue],
+                                cc: Option[UncheckedAddressesHeaderValue],
+                                bcc: Option[UncheckedAddressesHeaderValue],
+                                sender: Option[UncheckedAddressesHeaderValue],
+                                replyTo: Option[UncheckedAddressesHeaderValue],
                                 subject: Option[Subject],
                                 sentAt: Option[UTCDate],
                                 keywords: Option[Keywords],
@@ -132,7 +195,7 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
           references.flatMap(_.asString).map(new RawField("References", _)).foreach(builder.setField)
           inReplyTo.flatMap(_.asString).map(new RawField("In-Reply-To", _)).foreach(builder.setField)
           subject.foreach(value => builder.setSubject(value.value))
-          val maybeFrom: Option[List[Mailbox]] = from.flatMap(_.asMime4JMailboxList)
+          val maybeFrom: Option[List[Mime4jMailbox]] = from.flatMap(_.asMime4JMailboxList)
           maybeFrom.map(_.asJava).foreach(builder.setFrom)
           to.flatMap(_.asMime4JMailboxList).map(_.asJava).foreach(builder.setTo)
           cc.flatMap(_.asMime4JMailboxList).map(_.asJava).foreach(builder.setCc)
@@ -157,25 +220,34 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
             })
       }
 
-  private def generateUniqueMessageId(fromAddress: Option[List[Mailbox]]): String = 
+  private def generateUniqueMessageId(fromAddress: Option[List[Mime4jMailbox]]): String =
     MimeUtil.createUniqueMessageId(fromAddress.flatMap(_.headOption).map(_.getDomain).orNull)
 
-  private def createAlternativeBody(htmlBody: Option[String], textBody: Option[String], htmlTextExtractor: HtmlTextExtractor) = {
+  private def createAlternativeBody(htmlBody: Option[ClientBodyPart], textBody: Option[ClientBodyPart], htmlTextExtractor: HtmlTextExtractor) = {
     val alternativeBuilder = MultipartBuilder.create(SubType.ALTERNATIVE_SUBTYPE)
-    addBodypart(alternativeBuilder, textBody.getOrElse(htmlTextExtractor.toPlainText(htmlBody.getOrElse(""))), PLAIN_TEXT_UTF_8, StandardCharsets.UTF_8)
+    val replacement: ClientBodyPart = textBody.getOrElse(ClientBodyPart(
+      htmlTextExtractor.toPlainText(htmlBody.map(_.value).getOrElse("")),
+      htmlBody.map(_.specificHeaders).getOrElse(List())))
+    addBodypart(alternativeBuilder, replacement, PLAIN_TEXT_UTF_8, StandardCharsets.UTF_8)
     htmlBody.foreach(text => addBodypart(alternativeBuilder, text, HTML_UTF_8, StandardCharsets.UTF_8))
 
     alternativeBuilder
   }
 
-  private def addBodypart(multipartBuilder: MultipartBuilder, body: String, mediaType: MediaType, charset: NioCharset): MultipartBuilder =
-    multipartBuilder.addBodyPart(
-      BodyPartBuilder.create.setBody(body, charset)
+  private def addBodypart(multipartBuilder: MultipartBuilder, body: ClientBodyPart, mediaType: MediaType, charset: NioCharset): MultipartBuilder = {
+    val bodyPartBuilder = BodyPartBuilder.create.setBody(body.value, charset)
       .setContentType(mediaType.withoutParameters().toString, new NameValuePair("charset", charset.name))
-      .setContentTransferEncoding("quoted-printable"))
+      .setContentTransferEncoding("quoted-printable")
 
-  private def createMultipartWithAttachments(maybeHtmlBody: Option[String],
-                                             maybeTextBody: Option[String],
+    body.specificHeaders
+      .flatMap(_.asFields)
+      .foreach(field => bodyPartBuilder.addField(field))
+
+    multipartBuilder.addBodyPart(bodyPartBuilder)
+  }
+
+  private def createMultipartWithAttachments(maybeHtmlBody: Option[ClientBodyPart],
+                                             maybeTextBody: Option[ClientBodyPart],
                                              attachments: List[Attachment],
                                              blobResolvers: BlobResolvers,
                                              htmlTextExtractor: HtmlTextExtractor,
@@ -203,8 +275,8 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
       _.readAllBytes()
     }.toEither
 
-  private def createMixedRelatedBody(maybeHtmlBody: Option[String],
-                                     maybeTextBody: Option[String],
+  private def createMixedRelatedBody(maybeHtmlBody: Option[ClientBodyPart],
+                                     maybeTextBody: Option[ClientBodyPart],
                                      inlineAttachments: List[LoadedAttachment],
                                      normalAttachments: List[LoadedAttachment],
                                      htmlTextExtractor: HtmlTextExtractor): MultipartBuilder = {
@@ -226,7 +298,7 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
     }
   }
 
-  private def createMixedBody(maybeHtmlBody: Option[String], maybeTextBody: Option[String], normalAttachments: List[LoadedAttachment], htmlTextExtractor: HtmlTextExtractor) = {
+  private def createMixedBody(maybeHtmlBody: Option[ClientBodyPart], maybeTextBody: Option[ClientBodyPart], normalAttachments: List[LoadedAttachment], htmlTextExtractor: HtmlTextExtractor) = {
     val mixedMultipartBuilder = MultipartBuilder.create(SubType.MIXED_SUBTYPE)
     mixedMultipartBuilder.addBodyPart(BodyPartBuilder.create().setBody(createAlternativeBody(maybeHtmlBody, maybeTextBody, htmlTextExtractor).build))
     normalAttachments.foldLeft(mixedMultipartBuilder) {
@@ -236,7 +308,7 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
     }
   }
 
-  private def createRelatedBody(maybeHtmlBody: Option[String], maybeTextBody: Option[String], inlineAttachments: List[LoadedAttachment], htmlTextExtractor: HtmlTextExtractor) = {
+  private def createRelatedBody(maybeHtmlBody: Option[ClientBodyPart], maybeTextBody: Option[ClientBodyPart], inlineAttachments: List[LoadedAttachment], htmlTextExtractor: HtmlTextExtractor) = {
     val relatedMultipartBuilder = MultipartBuilder.create(SubType.RELATED_SUBTYPE)
     relatedMultipartBuilder.addBodyPart(BodyPartBuilder.create().setBody(createAlternativeBody(maybeHtmlBody, maybeTextBody, htmlTextExtractor).build))
     inlineAttachments.foldLeft(relatedMultipartBuilder) {
@@ -263,25 +335,25 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
 
   private def contentTypeField(attachment: Attachment, blob: Blob): ContentTypeField = {
     val typeAsField: ContentTypeField = blob.contentType.asMime4J
-    if (attachment.name.isDefined) {
-      Fields.contentType(typeAsField.getMimeType,
-        Map.newBuilder[String, String]
-          .addAll(parametersWithoutName(typeAsField))
-          .addOne("name", EncoderUtil.encodeEncodedWord(attachment.name.get.value, Usage.TEXT_TOKEN))
-          .result
-          .asJava)
-    } else {
-      typeAsField
-    }
+    val parameterBuilder = Map.newBuilder[String, String]
+      .addAll(parametersWithoutNameAndCharset(typeAsField))
+
+    attachment.name.foreach(name => parameterBuilder.addOne("name", EncoderUtil.encodeEncodedWord(name.value, Usage.TEXT_TOKEN)))
+    attachment.charset.map(c => c.value).orElse(Option(typeAsField.getCharset))
+      .foreach(charset => parameterBuilder.addOne("charset", charset))
+
+    Fields.contentType(typeAsField.getMimeType,
+      parameterBuilder.result.asJava)
   }
 
-  private def parametersWithoutName(typeAsField: ContentTypeField): Map[String, String] =
+  private def parametersWithoutNameAndCharset(typeAsField: ContentTypeField): Map[String, String] =
     typeAsField.getParameters
       .asScala
-      .filter(!_._1.equals("name"))
+      .filter(!_._1.equalsIgnoreCase("name"))
+      .filter(!_._1.equalsIgnoreCase("charset"))
       .toMap
 
-  def validateHtmlBody: Either[IllegalArgumentException, Option[String]] = htmlBody match {
+  def validateHtmlBody: Either[IllegalArgumentException, Option[ClientBodyPart]] = htmlBody match {
     case None => Right(None)
     case Some(html :: Nil) if !html.`type`.value.equals("text/html") => Left(new IllegalArgumentException("Expecting htmlBody type to be text/html"))
     case Some(html :: Nil) => retrieveCorrespondingBody(html.partId)
@@ -289,7 +361,7 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
     case _ => Left(new IllegalArgumentException("Expecting htmlBody to contains only 1 part"))
   }
 
-  def validateTextBody: Either[IllegalArgumentException, Option[String]] = textBody match {
+  def validateTextBody: Either[IllegalArgumentException, Option[ClientBodyPart]] = textBody match {
     case None => Right(None)
     case Some(text :: Nil) if !text.`type`.value.equals("text/plain") => Left(new IllegalArgumentException("Expecting htmlBody type to be text/html"))
     case Some(text :: Nil) => retrieveCorrespondingBody(text.partId)
@@ -297,13 +369,34 @@ case class EmailCreationRequest(mailboxIds: MailboxIds,
     case _ => Left(new IllegalArgumentException("Expecting textBody to contains only 1 part"))
   }
 
-  private def retrieveCorrespondingBody(partId: ClientPartId): Option[Either[IllegalArgumentException, Some[String]]] =
+  def validateRequest: Either[IllegalArgumentException, EmailCreationRequest] = validateEmailAddressHeader
+
+  def validateEmailAddressHeader: Either[IllegalArgumentException, EmailCreationRequest] = keywords match {
+    case Some(k) if k.keywords.contains(KEYWORD_DRAFT) => scala.Right(this)
+    case _ => doValidateEmailAddressHeader()
+  }
+
+  private def doValidateEmailAddressHeader(): Either[IllegalArgumentException, EmailCreationRequest] = {
+    val addressesHeaderInvalid: Map[String, IllegalArgumentException] = Map("from" -> from, "to" -> to, "cc" -> cc, "bcc" -> bcc, "sender" -> sender, "replyTo" -> replyTo)
+      .map {
+        case (name, maybeAddresses) => (name, maybeAddresses.map(_.validate))
+      }.collect { case (name, Some(addresses)) => (name, addresses) }
+      .collect { case (name, scala.Left(exception)) => (name, exception) }
+
+    addressesHeaderInvalid match {
+      case invalid if invalid.nonEmpty => Left(new IllegalArgumentException(s"/${addressesHeaderInvalid.map { case (name, exception) => s"$name: ${exception.getMessage}" }.mkString(", ")}"))
+      case _ => scala.Right(this)
+    }
+  }
+
+  private def retrieveCorrespondingBody(partId: ClientPartId): Option[Either[IllegalArgumentException, Some[ClientBodyPart]]] =
     bodyValues.getOrElse(Map())
       .get(partId)
       .map {
         case part if part.isTruncated.isDefined && part.isTruncated.get.value => Left(new IllegalArgumentException("Expecting isTruncated to be false"))
         case part if part.isEncodingProblem.isDefined && part.isEncodingProblem.get.value => Left(new IllegalArgumentException("Expecting isEncodingProblem to be false"))
-        case part => Right(Some(part.value))
+        case part => Right(Some(
+          ClientBodyPart(part.value, part.specificHeaders)))
       }
 
   private def validateSpecificHeaders(message: Message.Builder): Either[IllegalArgumentException, Unit] = {
@@ -328,7 +421,9 @@ case class DestroyIds(value: Seq[UnparsedMessageId])
 case class EmailSetRequest(accountId: AccountId,
                            create: Option[Map[EmailCreationId, JsObject]],
                            update: Option[Map[UnparsedMessageId, JsObject]],
-                           destroy: Option[DestroyIds]) extends WithAccountId
+                           destroy: Option[DestroyIds]) extends WithAccountId with SetRequest {
+  override def idCount: Int = create.map(_.size).getOrElse(0) + update.map(_.size).getOrElse(0) + destroy.map(_.value).map(_.size).getOrElse(0)
+}
 
 case class EmailSetResponse(accountId: AccountId,
                             oldState: Option[UuidState],
@@ -392,6 +487,10 @@ case class EmailSetUpdate(keywords: Option[Keywords],
 
   def isOnlyFlagRemoval: Boolean = keywordsToRemove.isDefined && keywordsToAdd.isEmpty && mailboxIds.isEmpty &&
     mailboxIdsToAdd.isEmpty && mailboxIdsToRemove.isEmpty
+
+  def isFlagUpdate: Boolean = keywords.isDefined || keywordsToAdd.isDefined || keywordsToRemove.isDefined
+
+  def isMailboxUpdate: Boolean = mailboxIds.isDefined || mailboxIdsToAdd.isDefined || mailboxIdsToRemove.isDefined
 }
 
 case class ValidatedEmailSetUpdate private(keywordsTransformation: Function[Keywords, Keywords],

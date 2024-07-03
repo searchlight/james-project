@@ -25,7 +25,7 @@ import java.util.concurrent.Callable
 import com.google.common.base.Preconditions
 import com.google.common.hash.{Hashing, HashingInputStream}
 import com.google.common.io.{ByteSource, FileBackedOutputStream}
-import javax.inject.{Inject, Named}
+import jakarta.inject.{Inject, Named}
 import org.apache.commons.io.IOUtils
 import org.apache.james.blob.api.{BlobId, BlobStore, BlobStoreDAO, BucketName}
 import org.reactivestreams.Publisher
@@ -77,6 +77,7 @@ class DeDuplicationBlobStore @Inject()(blobStoreDAO: BlobStoreDAO,
       sourceSupplier.asJava,
       ((fileBackedOutputStream: FileBackedOutputStream) => fileBackedOutputStream.reset()).asJava,
       DeDuplicationBlobStore.LAZY_RESOURCE_CLEANUP)
+      .subscribeOn(Schedulers.boundedElastic())
   }
 
   private def saveAndGenerateBlobId(bucketName: BucketName, hashingInputStream: HashingInputStream, fileBackedOutputStream: FileBackedOutputStream): SMono[BlobId] =

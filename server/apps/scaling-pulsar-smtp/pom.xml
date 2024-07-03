@@ -17,8 +17,7 @@
     specific language governing permissions and limitations
     under the License.
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
 
@@ -110,6 +109,10 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-guice-webadmin-mail-over-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
             <artifactId>james-server-guice-webadmin-mailqueue</artifactId>
         </dependency>
         <dependency>
@@ -123,6 +126,10 @@
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailets</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-protocols-smtp-dkim</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -184,12 +191,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.3.8</version>
-        </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>42.3.8</version>
+            <version>42.6.1</version>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -269,9 +271,7 @@
                         </goals>
                         <phase>package</phase>
                         <configuration>
-                            <url>
-                                https://github.com/glowroot/glowroot/releases/download/v0.13.6/glowroot-0.13.6-dist.zip
-                            </url>
+                            <url>https://github.com/glowroot/glowroot/releases/download/v0.13.6/glowroot-0.13.6-dist.zip</url>
                             <unpack>true</unpack>
                             <outputDirectory>${project.build.directory}</outputDirectory>
                             <md5>f9026dbab1fbade067ca549913802fcc</md5>
@@ -284,7 +284,7 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <configuration>
                     <from>
-                        <image>eclipse-temurin:11-jre-focal</image>
+                        <image>eclipse-temurin:21-jre-jammy</image>
                     </from>
                     <to>
                         <image>apache/james</image>

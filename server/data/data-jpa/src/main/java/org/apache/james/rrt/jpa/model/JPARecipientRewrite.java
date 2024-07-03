@@ -26,13 +26,12 @@ import static org.apache.james.rrt.jpa.model.JPARecipientRewrite.UPDATE_MAPPING_
 
 import java.io.Serializable;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 import org.apache.james.core.Domain;
 
@@ -44,12 +43,11 @@ import com.google.common.base.Objects;
  */
 @Entity(name = "JamesRecipientRewrite")
 @Table(name = JPARecipientRewrite.JAMES_RECIPIENT_REWRITE)
-@NamedQueries({
-        @NamedQuery(name = SELECT_USER_DOMAIN_MAPPING_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt WHERE rrt.user=:user AND rrt.domain=:domain"),
-        @NamedQuery(name = SELECT_ALL_MAPPINGS_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt"),
-        @NamedQuery(name = DELETE_MAPPING_QUERY, query = "DELETE FROM JamesRecipientRewrite rrt WHERE rrt.user=:user AND rrt.domain=:domain AND rrt.targetAddress=:targetAddress"),
-        @NamedQuery(name = UPDATE_MAPPING_QUERY, query = "UPDATE JamesRecipientRewrite rrt SET rrt.targetAddress=:targetAddress WHERE rrt.user=:user AND rrt.domain=:domain"),
-        @NamedQuery(name = SELECT_SOURCES_BY_MAPPING_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt WHERE rrt.targetAddress=:targetAddress")})
+@NamedQuery(name = SELECT_USER_DOMAIN_MAPPING_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt WHERE rrt.user=:user AND rrt.domain=:domain")
+@NamedQuery(name = SELECT_ALL_MAPPINGS_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt")
+@NamedQuery(name = DELETE_MAPPING_QUERY, query = "DELETE FROM JamesRecipientRewrite rrt WHERE rrt.user=:user AND rrt.domain=:domain AND rrt.targetAddress=:targetAddress")
+@NamedQuery(name = UPDATE_MAPPING_QUERY, query = "UPDATE JamesRecipientRewrite rrt SET rrt.targetAddress=:targetAddress WHERE rrt.user=:user AND rrt.domain=:domain")
+@NamedQuery(name = SELECT_SOURCES_BY_MAPPING_QUERY, query = "SELECT rrt FROM JamesRecipientRewrite rrt WHERE rrt.targetAddress=:targetAddress")
 @IdClass(JPARecipientRewrite.RecipientRewriteTableId.class)
 public class JPARecipientRewrite {
     public static final String SELECT_USER_DOMAIN_MAPPING_QUERY = "selectUserDomainMapping";

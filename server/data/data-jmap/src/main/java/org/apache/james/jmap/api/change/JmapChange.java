@@ -19,8 +19,27 @@
 
 package org.apache.james.jmap.api.change;
 
+import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
 import org.apache.james.jmap.api.model.AccountId;
+
+import com.google.common.collect.ImmutableList;
 
 public interface JmapChange {
     AccountId getAccountId();
+
+    JmapChange forSharee(AccountId accountId, Supplier<State> state);
+
+    boolean isNoop();
+
+    default ImmutableList<JmapChange> propagateToSharee(List<AccountId> sharees, State.Factory stateFactory) {
+        if (isNoop()) {
+            return ImmutableList.of();
+        }
+        return Stream.concat(Stream.of(this), sharees.stream()
+                .map(shareeId -> forSharee(shareeId, stateFactory::generate)))
+            .collect(ImmutableList.toImmutableList());
+    }
 }

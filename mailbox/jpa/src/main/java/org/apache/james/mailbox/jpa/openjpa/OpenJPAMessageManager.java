@@ -22,7 +22,7 @@ package org.apache.james.mailbox.jpa.openjpa;
 import java.time.Clock;
 import java.util.EnumSet;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.events.EventBus;
 import org.apache.james.mailbox.MailboxPathLocker;
@@ -66,7 +66,7 @@ public class OpenJPAMessageManager extends StoreMessageManager {
                                  Clock clock) {
         super(StoreMailboxManager.DEFAULT_NO_MESSAGE_CAPABILITIES, mapperFactory, index, eventBus, locker, mailbox,
             quotaManager, quotaRootResolver, batchSizes, storeRightManager, PreDeletionHooks.NO_PRE_DELETION_HOOK,
-            new MessageStorer.WithoutAttachment(mapperFactory, messageIdFactory, new OpenJPAMessageFactory(OpenJPAMessageFactory.AdvancedFeature.None), threadIdGuessingAlgorithm, clock));
+            new MessageStorer.WithoutAttachment(mapperFactory, messageIdFactory, new OpenJPAMessageFactory(), threadIdGuessingAlgorithm, clock));
         this.storeRightManager = storeRightManager;
         this.mapperFactory = mapperFactory;
         this.mailbox = mailbox;
@@ -86,7 +86,7 @@ public class OpenJPAMessageManager extends StoreMessageManager {
         MailboxACL resolvedAcl = getResolvedAcl(mailboxSession);
         if (!storeRightManager.hasRight(mailbox, MailboxACL.Right.Read, mailboxSession)) {
             return Mono.just(MailboxMetaData.sensibleInformationFree(resolvedAcl, getMailboxEntity().getUidValidity(), isWriteable(mailboxSession)));
-        }
+}
         Flags permanentFlags = getPermanentFlags(mailboxSession);
         UidValidity uidValidity = getMailboxEntity().getUidValidity();
         MessageMapper messageMapper = mapperFactory.getMessageMapper(mailboxSession);

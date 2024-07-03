@@ -28,16 +28,18 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.inject.Inject;
-import javax.inject.Named;
 import javax.management.NotCompliantMBeanException;
 import javax.management.StandardMBean;
+
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxManager;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.mailbox.MessageManager;
 import org.apache.james.mailbox.exception.MailboxException;
+import org.apache.james.mailbox.exception.OverQuotaException;
 import org.apache.james.mailbox.model.Content;
 import org.apache.james.mailbox.model.MailboxId;
 import org.apache.james.mailbox.model.MailboxMetaData;
@@ -200,6 +202,8 @@ public class MailboxManagerManagement extends StandardMBean implements MailboxMa
                         return file.length();
                     }
                 }), session);
+        } catch (OverQuotaException e) {
+            LOGGER.error("Unable to import due to quota error", e);
         } catch (Exception e) {
             LOGGER.error("Unable to create mailbox", e);
         } finally {

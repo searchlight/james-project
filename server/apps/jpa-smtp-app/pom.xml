@@ -102,6 +102,10 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-guice-webadmin-mail-over-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
             <artifactId>james-server-guice-webadmin-mailqueue</artifactId>
         </dependency>
         <dependency>
@@ -121,6 +125,10 @@
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailets</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-protocols-smtp-dkim</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -170,7 +178,6 @@
         <dependency>
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
@@ -252,7 +259,7 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <configuration>
                     <from>
-                        <image>eclipse-temurin:11-jre-jammy</image>
+                        <image>eclipse-temurin:21-jre-jammy</image>
                     </from>
                     <to>
                         <image>apache/james</image>
@@ -263,14 +270,22 @@
                     <container>
                         <mainClass>org.apache.james.JPAJamesServerMain</mainClass>
                         <ports>
-                            <port>80</port> <!-- JMAP -->
-                            <port>143</port> <!-- IMAP -->
-                            <port>993</port> <!-- IMAPS -->
-                            <port>25</port> <!-- SMTP -->
-                            <port>465</port> <!-- SMTP + STARTTLS -->
-                            <port>587</port> <!-- SMTPS -->
-                            <port>4000</port> <!-- GLOWROOT, if activated -->
-                            <port>8000</port> <!-- WEBADMIN -->
+                            <port>80</port>
+                            <!-- JMAP -->
+                            <port>143</port>
+                            <!-- IMAP -->
+                            <port>993</port>
+                            <!-- IMAPS -->
+                            <port>25</port>
+                            <!-- SMTP -->
+                            <port>465</port>
+                            <!-- SMTP + STARTTLS -->
+                            <port>587</port>
+                            <!-- SMTPS -->
+                            <port>4000</port>
+                            <!-- GLOWROOT, if activated -->
+                            <port>8000</port>
+                            <!-- WEBADMIN -->
                         </ports>
                         <appRoot>/root</appRoot>
                         <jvmFlags>
@@ -319,7 +334,8 @@
                         <permissions>
                             <permission>
                                 <file>/usr/bin/james-cli</file>
-                                <mode>755</mode> <!-- Read/write/execute for owner, read/execute for group/other -->
+                                <mode>755</mode>
+                                <!-- Read/write/execute for owner, read/execute for group/other -->
                             </permission>
                         </permissions>
                     </extraDirectories>

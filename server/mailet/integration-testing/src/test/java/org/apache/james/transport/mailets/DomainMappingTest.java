@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.Username;
 import org.apache.james.core.builder.MimeMessageBuilder;
@@ -80,7 +80,7 @@ class DomainMappingTest {
     void setup(@TempDir File temporaryFolder) throws Exception {
         MailetContainer.Builder mailetContainer = TemporaryJamesServer.simpleMailetContainerConfiguration()
             .putProcessor(CommonProcessors.rrtErrorEnabledTransport())
-            .putProcessor(CommonProcessors.rrtErrorProcessor());
+            .putProcessor(CommonProcessors.rrtError());
 
         jamesServer = TemporaryJamesServer.builder()
             .withMailetContainer(mailetContainer)

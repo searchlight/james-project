@@ -34,7 +34,6 @@
     <description>An advanced email server - Cassandra backend and RabbitMQ messaging with guice injection.
         The use of messageId as an identifier enables to use safely Cassandra multi-datacenters set up.</description>
 
-
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -247,17 +246,15 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
-            <artifactId>james-server-jmap-draft-integration-testing</artifactId>
-            <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailbox-plugin-deleted-messages-vault-guice</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailets</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-protocols-smtp-dkim</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -312,6 +309,11 @@
         <dependency>
             <groupId>com.linagora</groupId>
             <artifactId>logback-elasticsearch-appender</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
@@ -387,7 +389,7 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <configuration>
                     <from>
-                        <image>eclipse-temurin:11-jre-jammy</image>
+                        <image>eclipse-temurin:21-jre-jammy</image>
                     </from>
                     <to>
                         <image>apache/james</image>
@@ -398,12 +400,17 @@
                     <container>
                         <mainClass>org.apache.james.DistributedPOP3JamesServerMain</mainClass>
                         <ports>
-                            <port>25</port> <!-- SMTP -->
-                            <port>110</port> <!-- POP3 -->
-                            <port>465</port> <!-- SMTP + STARTTLS -->
-                            <port>587</port> <!-- SMTPS -->
+                            <port>25</port>
+                            <!-- SMTP -->
+                            <port>110</port>
+                            <!-- POP3 -->
+                            <port>465</port>
+                            <!-- SMTP + STARTTLS -->
+                            <port>587</port>
+                            <!-- SMTPS -->
 
-                            <port>8000</port> <!-- WEBADMIN -->
+                            <port>8000</port>
+                            <!-- WEBADMIN -->
                         </ports>
                         <appRoot>/root</appRoot>
                         <jvmFlags>
@@ -446,7 +453,8 @@
                         <permissions>
                             <permission>
                                 <file>/usr/bin/james-cli</file>
-                                <mode>755</mode> <!-- Read/write/execute for owner, read/execute for group/other -->
+                                <mode>755</mode>
+                                <!-- Read/write/execute for owner, read/execute for group/other -->
                             </permission>
                         </permissions>
                     </extraDirectories>

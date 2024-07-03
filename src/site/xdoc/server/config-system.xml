@@ -82,11 +82,6 @@
                     <dd>The user id of the database account to be used by this connection.</dd>
                     <dt><strong>database.password</strong></dt>
                     <dd>The password of the database account to be used by this connection.</dd>
-                    <dt><strong>vendorAdapter.database</strong></dt>
-                    <dd>Supported adapters are: DB2, DERBY, H2, HSQL, INFORMIX, MYSQL, ORACLE, POSTGRESQL, SQL_SERVER, SYBASE .</dd>
-                    <dt><strong>openjpa.streaming</strong></dt>
-                    <dd>true or false - Use streaming for Blobs. This is only supported on a limited set of databases atm. You
-                        should check if it's supported by your DB before enable it. See <a href="http://openjpa.apache.org/builds/latest/docs/manual/ref_guide_mapping_jpa.html">http://openjpa.apache.org/builds/latest/docs/manual/ref_guide_mapping_jpa.html</a> (#7.11. LOB Streaming).</dd>
                 </dl>
 
                 <p>NOTE: all<code>openjpa.*</code> properties will be passed to OpenJPA library as configuration See <a href="https://openjpa.apache.org/builds/3.2.2/apache-openjpa/docs/ref_guide_conf_openjpa.html">https://openjpa.apache.org/builds/3.2.2/apache-openjpa/docs/ref_guide_conf_openjpa.html</a> for a complete list </p>
@@ -131,6 +126,11 @@
 
             <subsection name="jmx.properties">
 
+                <p><b>Disclaimer: </b> JMX poses several security concerns and had been leveraged to conduct arbitrary code execution.
+                This threat is mitigated by not allowing remote connections to JMX, setting up authentication and pre-authentication filters.
+                However, we recommend to either run James in isolation (docker / own virtual machine) or disable JMX altogether.<br/>
+                James JMX endpoint provides command line utilities and exposes a few metrics, also available on the metric endpoint.</p>
+
                 <p>Consult <a href="https://github.com/apache/james-project/tree/master/server/apps/spring-app/src/main/resources/jmx.properties">jmx.properties</a> in GIT to get some examples and hints.</p>
 
                 <p>This is used to configure the JMX MBean server via which all management is achieved (also used by via the james-cli).</p>
@@ -145,11 +145,9 @@
                 </dl>
 
                 <p>To access from a remote location, it has been reported that <code>-Dcom.sun.management.jmxremote.ssl=false</code> is
-                    needed in the startup script.</p>
+                    needed in the startup script. Exposing JMX remotely poses numerous security issues and as such is strongly discouraged.</p>
 
                 <b>JMX Security</b>
-
-                <p>Guice only</p>
 
                 <p>In order to set up JMX authentication, we need to put <code>jmxremote.password</code> and <code>jmxremote.access</code> file
                     to <code>/conf</code> directory.</p>
@@ -168,11 +166,11 @@
                 james-admin readwrite
                 </code></pre>
 
-                <p>When James runs with option <code>-Djames.jmx.credential.generation=true</code>, James will automatically
+                <p>(Guice only) When James runs with option <code>-Djames.jmx.credential.generation=true</code>, James will automatically
                     generate <code>jmxremote.password</code> if the file does not exist.
                     Then the default username is <code>james-admin</code> and a random password. This option defaults to true.</p>
 
-
+                <p>(Spring only) Presence of JMX credentials is compulsory to start the server.</p>
             </subsection>
 
             <subsection name="sqlResources.xml">

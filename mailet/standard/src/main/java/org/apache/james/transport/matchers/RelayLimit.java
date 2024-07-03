@@ -24,22 +24,24 @@ package org.apache.james.transport.matchers;
 import java.util.Collection;
 import java.util.Enumeration;
 
-import javax.mail.Header;
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.Header;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.MailAddress;
 import org.apache.mailet.Mail;
 import org.apache.mailet.base.GenericMatcher;
 import org.apache.mailet.base.MailetUtil;
 import org.apache.mailet.base.RFC2822Headers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Matches mail which has been relayed more than a given number of times.
  * @version 1.0.0, 1/5/2000
  */
-
 public class RelayLimit extends GenericMatcher {
+    private static final Logger LOGGER = LoggerFactory.getLogger(RelayLimit.class);
     int limit = 30;
 
     @Override
@@ -48,7 +50,7 @@ public class RelayLimit extends GenericMatcher {
     }
 
     @Override
-    public Collection<MailAddress> match(Mail mail) throws javax.mail.MessagingException {
+    public Collection<MailAddress> match(Mail mail) throws MessagingException {
         MimeMessage mm = mail.getMessage();
         int count = 0;
         for (Enumeration<Header> e = mm.getAllHeaders(); e.hasMoreElements();) {
@@ -58,6 +60,7 @@ public class RelayLimit extends GenericMatcher {
             }
         }
         if (count >= limit) {
+            LOGGER.error("{} with Message-ID {} exceeded relay limit: {} Received headers", mail.getName(), mail.getMessage().getMessageID(), count);
             return mail.getRecipients();
         } else {
             return null;

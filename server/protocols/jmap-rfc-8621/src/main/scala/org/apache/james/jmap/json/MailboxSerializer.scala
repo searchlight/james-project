@@ -21,7 +21,7 @@ package org.apache.james.jmap.json
 
 import eu.timepit.refined
 import eu.timepit.refined._
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.core.{Domain, Username}
 import org.apache.james.jmap.core.CapabilityIdentifier.CapabilityIdentifier
 import org.apache.james.jmap.core.Id.IdConstraint
@@ -51,7 +51,10 @@ class MailboxSerializer @Inject()(mailboxIdFactory: MailboxId.Factory) {
     case _ => JsError("mailboxId needs to be represented by a JsString")
   }
 
-  private implicit val roleWrites: Writes[Role] = Writes(role => JsString(role.serialize))
+  private implicit val roleWrites: Writes[Role] = Writes {
+    case Role.SPAM => JsString("junk")
+    case role => JsString(role.serialize())
+  }
   private implicit val sortOrderWrites: Writes[SortOrder] = Json.valueWrites[SortOrder]
   private implicit val totalEmailsWrites: Writes[TotalEmails] = Json.valueWrites[TotalEmails]
   private implicit val unreadEmailsWrites: Writes[UnreadEmails] = Json.valueWrites[UnreadEmails]

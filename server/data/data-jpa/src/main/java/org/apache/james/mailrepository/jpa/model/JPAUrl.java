@@ -19,20 +19,18 @@
 
 package org.apache.james.mailrepository.jpa.model;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
 
 import org.apache.james.mailrepository.api.MailRepositoryUrl;
 
 @Entity(name = "JamesMailRepos")
 @Table(name = "JAMES_MAIL_REPOS")
-@NamedQueries({
-    @NamedQuery(name = "listUrls", query = "SELECT url FROM JamesMailRepos url"),
-    @NamedQuery(name = "getUrl", query = "SELECT url FROM JamesMailRepos url WHERE url.value=:value")})
+@NamedQuery(name = "listUrls", query = "SELECT url FROM JamesMailRepos url")
+@NamedQuery(name = "getUrl", query = "SELECT url FROM JamesMailRepos url WHERE url.value=:value")
 public class JPAUrl {
     public static JPAUrl from(MailRepositoryUrl url) {
         return new JPAUrl(url.asString());

@@ -27,7 +27,7 @@ import static org.hamcrest.Matchers.equalTo;
 
 import java.io.File;
 
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.builder.MimeMessageBuilder;
 import org.apache.james.mailets.TemporaryJamesServer;
@@ -80,7 +80,7 @@ class GroupMappingRelayTest {
                 .addMailet(MailetConfiguration.remoteDeliveryBuilder()
                     .matcher(All.class)
                     .addProperty("gateway", fakeSmtp.getContainer().getContainerIp())))
-            .putProcessor(CommonProcessors.rrtErrorProcessor());
+            .putProcessor(CommonProcessors.rrtError());
 
         jamesServer = TemporaryJamesServer.builder()
             .withMailetContainer(mailetContainer)

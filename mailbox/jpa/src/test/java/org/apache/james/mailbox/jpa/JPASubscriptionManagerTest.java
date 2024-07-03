@@ -18,7 +18,7 @@
  ****************************************************************/
 package org.apache.james.mailbox.jpa;
 
-import javax.persistence.EntityManagerFactory;
+import jakarta.persistence.EntityManagerFactory;
 
 import org.apache.james.backends.jpa.JPAConfiguration;
 import org.apache.james.backends.jpa.JpaTestCluster;
@@ -32,7 +32,6 @@ import org.apache.james.mailbox.jpa.mail.JPAModSeqProvider;
 import org.apache.james.mailbox.jpa.mail.JPAUidProvider;
 import org.apache.james.mailbox.store.StoreSubscriptionManager;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 

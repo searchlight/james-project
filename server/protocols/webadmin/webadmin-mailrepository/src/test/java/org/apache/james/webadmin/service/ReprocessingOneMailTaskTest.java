@@ -19,6 +19,7 @@
 
 package org.apache.james.webadmin.service;
 
+import static org.apache.james.JsonSerializationVerifier.recursiveComparisonConfiguration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -105,7 +106,8 @@ class ReprocessingOneMailTaskTest {
         JsonTaskSerializer testee = JsonTaskSerializer.of(ReprocessingOneMailTaskDTO.module(CLOCK, REPROCESSING_SERVICE));
 
         assertThat(testee.deserialize(SERIALIZED_TASK_OLD))
-            .isEqualToComparingFieldByFieldRecursively(taskWithTargetProcessor);
+            .usingRecursiveComparison(recursiveComparisonConfiguration)
+            .isEqualTo(taskWithTargetProcessor);
     }
 
     @Test
@@ -115,6 +117,7 @@ class ReprocessingOneMailTaskTest {
         JsonTaskAdditionalInformationSerializer testee = JsonTaskAdditionalInformationSerializer.of(ReprocessingOneMailTaskAdditionalInformationDTO.module());
 
         assertThat(testee.deserialize(SERIALIZED_TASK_OLD_ADDITIONAL_INFORMATION))
-            .isEqualToComparingFieldByFieldRecursively(details);
+            .usingRecursiveComparison(recursiveComparisonConfiguration)
+            .isEqualTo(details);
     }
 }

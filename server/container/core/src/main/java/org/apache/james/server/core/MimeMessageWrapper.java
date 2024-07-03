@@ -19,6 +19,8 @@
 
 package org.apache.james.server.core;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -29,15 +31,18 @@ import java.io.UnsupportedEncodingException;
 import java.util.Enumeration;
 import java.util.UUID;
 
-import javax.activation.DataHandler;
-import javax.mail.Header;
-import javax.mail.MessagingException;
-import javax.mail.Session;
-import javax.mail.internet.InternetHeaders;
-import javax.mail.internet.MimeMessage;
-import javax.mail.util.SharedByteArrayInputStream;
+import jakarta.activation.DataHandler;
+import jakarta.mail.Header;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
+import jakarta.mail.internet.InternetHeaders;
+import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeUtility;
+import jakarta.mail.internet.SharedInputStream;
+import jakarta.mail.util.SharedByteArrayInputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.input.UnsynchronizedBufferedInputStream;
 import org.apache.commons.io.output.UnsynchronizedByteArrayOutputStream;
 import org.apache.james.lifecycle.api.Disposable;
 import org.apache.james.lifecycle.api.LifecycleUtil;
@@ -52,6 +57,7 @@ import com.google.common.io.CountingInputStream;
  * This class is not thread safe.
  */
 public class MimeMessageWrapper extends MimeMessage implements Disposable {
+    private static final String MIME_VERSION_HEADER = "MIME-Version";
 
     /**
      * System property which tells JAMES if it should copy a message in memory
@@ -518,6 +524,12 @@ public class MimeMessageWrapper extends MimeMessage implements Disposable {
     @Override
     public void setHeader(String name, String value) throws MessagingException {
         checkModifyHeaders();
+        if (name.equalsIgnoreCase(MIME_VERSION_HEADER)
+            && getHeader(MIME_VERSION_HEADER) != null
+            && value.equals("1.0")
+            && getHeader(MIME_VERSION_HEADER)[0].startsWith("1.0")) {
+            return;
+        }
         super.setHeader(name, value);
     }
 
@@ -569,8 +581,34 @@ public class MimeMessageWrapper extends MimeMessage implements Disposable {
     protected void parse(InputStream is) throws MessagingException {
         // the super implementation calls
         // headers = createInternetHeaders(is);
-        super.parse(is);
+        parseUnsynchronized(is);
         messageParsed = true;
+    }
+
+    protected void parseUnsynchronized(InputStream is) throws MessagingException {
+        if (!(is instanceof ByteArrayInputStream) && !(is instanceof BufferedInputStream) && !(is instanceof SharedInputStream)) {
+            try {
+                is = UnsynchronizedBufferedInputStream.builder()
+                    .setBufferSize(8192)
+                    .setInputStream(is)
+                    .get();
+            } catch (IOException e) {
+                throw new MessagingException("Failure buffering stream", e);
+            }
+        }
+
+        this.headers = this.createInternetHeaders(is);
+        if (is instanceof SharedInputStream) {
+            SharedInputStream sharedInputStream = (SharedInputStream)is;
+            this.contentStream = sharedInputStream.newStream(sharedInputStream.getPosition(), -1L);
+        } else {
+            try {
+                this.content = MimeUtility.getBytes(is);
+            } catch (IOException var3) {
+                throw new MessagingException("IOException", var3);
+            }
+        }
+        this.modified = false;
     }
 
     /**

@@ -19,6 +19,9 @@
 
 package org.apache.james.jmap.cassandra.filtering;
 
+import static org.apache.james.JsonSerializationVerifier.recursiveComparisonConfiguration;
+import static org.apache.james.jmap.api.filtering.FilteringRuleSetDefineDTOModules.FILTERING_INCREMENT;
+import static org.apache.james.jmap.api.filtering.FilteringRuleSetDefineDTOModules.FILTERING_RULE_SET_DEFINED;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_1;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_2;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_4;
@@ -30,13 +33,13 @@ import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_SUBJECT;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_SUBJECT_2;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_TO;
 import static org.apache.james.jmap.api.filtering.RuleFixture.RULE_TO_2;
-import static org.apache.james.jmap.cassandra.filtering.FilteringRuleSetDefineDTOModules.FILTERING_INCREMENT;
-import static org.apache.james.jmap.cassandra.filtering.FilteringRuleSetDefineDTOModules.FILTERING_RULE_SET_DEFINED;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.apache.james.JsonSerializationVerifier;
 import org.apache.james.core.Username;
 import org.apache.james.eventsourcing.EventId;
+import org.apache.james.jmap.api.filtering.FilteringIncrementalRuleChangeDTO;
+import org.apache.james.jmap.api.filtering.FilteringRuleSetDefinedDTO;
 import org.apache.james.jmap.api.filtering.Rule;
 import org.apache.james.jmap.api.filtering.impl.FilteringAggregateId;
 import org.apache.james.jmap.api.filtering.impl.IncrementalRuleChange;
@@ -113,8 +116,10 @@ class DTOTest {
             .withoutNestedType();
 
         SoftAssertions.assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(serializer.deserialize(EVENT_JSON_3)).isEqualToComparingFieldByFieldRecursively(SIMPLE_RULE);
-            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON_3)).isEqualToComparingFieldByFieldRecursively(COMPLEX_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_JSON_3)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(SIMPLE_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON_3)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(COMPLEX_RULE);
         }));
     }
 
@@ -125,8 +130,10 @@ class DTOTest {
             .withoutNestedType();
 
         SoftAssertions.assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(serializer.deserialize(EVENT_JSON_2)).isEqualToComparingFieldByFieldRecursively(SIMPLE_RULE);
-            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON_2)).isEqualToComparingFieldByFieldRecursively(COMPLEX_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_JSON_2)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(SIMPLE_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON_2)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(COMPLEX_RULE);
         }));
     }
 
@@ -137,8 +144,10 @@ class DTOTest {
             .withoutNestedType();
 
         SoftAssertions.assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(serializer.deserialize(EVENT_JSON)).isEqualToComparingFieldByFieldRecursively(SIMPLE_RULE);
-            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON)).isEqualToComparingFieldByFieldRecursively(COMPLEX_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_JSON)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(SIMPLE_RULE);
+            softly.assertThat(serializer.deserialize(EVENT_COMPLEX_JSON)).usingRecursiveComparison(recursiveComparisonConfiguration)
+                .isEqualTo(COMPLEX_RULE);
         }));
     }
 
@@ -156,7 +165,8 @@ class DTOTest {
             .withoutNestedType();
 
         assertThat(serializer.deserialize(ClassLoaderUtils.getSystemResourceAsString("json/increment-v3.json")))
-            .isEqualToComparingFieldByFieldRecursively(INCREMENT);
+            .usingRecursiveComparison(recursiveComparisonConfiguration)
+            .isEqualTo(INCREMENT);
     }
 
     @Test
@@ -166,7 +176,8 @@ class DTOTest {
             .withoutNestedType();
 
         assertThat(serializer.deserialize(ClassLoaderUtils.getSystemResourceAsString("json/increment-v2.json")))
-            .isEqualToComparingFieldByFieldRecursively(INCREMENT);
+            .usingRecursiveComparison(recursiveComparisonConfiguration)
+            .isEqualTo(INCREMENT);
     }
 
     @Test
@@ -176,6 +187,7 @@ class DTOTest {
             .withoutNestedType();
 
         assertThat(serializer.deserialize(ClassLoaderUtils.getSystemResourceAsString("json/increment.json")))
-            .isEqualToComparingFieldByFieldRecursively(INCREMENT);
+            .usingRecursiveComparison(recursiveComparisonConfiguration)
+            .isEqualTo(INCREMENT);
     }
 }

@@ -20,10 +20,10 @@ package org.apache.james.transport.mailets;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Named;
-import javax.mail.Flags;
-import javax.mail.MessagingException;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+import jakarta.mail.Flags;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;

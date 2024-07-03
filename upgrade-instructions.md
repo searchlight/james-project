@@ -25,6 +25,120 @@ Change list:
  - [Set up TTL on the mailbox_change and email_change tables](#set-up-ttl-on-the-mailboxchange-and-emailchange-tables)
  - [Change compaction strategy of blob_cache table](#change-compaction-strategy-of-blobcache-table)
  - [RRT forwards now rewrite senders](#rrt-forwards-now-rewrite-senders)
+ - [Increase RabbitMQ consumer timeout on the task queue](#increase-rabbitmq-consumer-timeout-on-the-task-queue)
+ - [JMX authentication for Spring](#jmx-authentication-for-spring)
+ - [Java 21](#java-21)
+ - [javax -> jakarta](#javax---jakarta)
+ - [Make all queues on RabbitMQ quorum queue when `quorum.queues.enable=true`](#make-all-queues-on-rabbitmq-quorum-queue-when-quorumqueuesenabletrue)
+ - [Migrate RabbitMQ classic queues to version 2](#migrate-rabbitmq-classic-queues-to-version-2)
+ - [JAMES-3946 removals](#james-3946-white-list-removals)
+
+#### JAMES-3946 White list removals
+
+Date: 14/06/2024
+
+JIRA: https://issues.apache.org/jira/browse/JAMES-3946
+
+The experimental classes pertaining to "white list" management have been removed.
+
+This includes:
+- AbstractSQLWhitelistMatcher, IsInWhiteList, WhiteListManager, NetworkIsInWhitelist. Please use IsInDropList matcher instead.
+
+### Migrate RabbitMQ classic queues to version 2
+
+Date: 14/05/2024
+
+It is recommended by RabbitMQ to upgrade the classic queues to version 2 for better performance: https://www.rabbitmq.com/blog/2023/05/17/rabbitmq-3.12-performance-improvements#classic-queues-massively-improved-classic-queues-v2-cqv2.
+
+Existing version 1 classic queues would need to be deleted and let James re-create them as version 2.
+
+Notice that to use classic queues version 2, you need at least RabbitMQ 3.10.0. If you want to stick with the older RabbitMQ 
+versions and avoid this breaking change, you could set the JVM property `fallback.classic.queues.v1` to `true` (defaults to `false`).
+
+### Change cluster.enabled in redis.properties to redis.topology
+
+Date: 05/09/2024
+
+Concerned products: Distributed James, Cassandra James
+
+JIRA: https://issues.apache.org/jira/browse/JAMES-3693
+
+Now James supports more than two topologies (previously there were just cluster and standalone).
+
+Use `redis.topology` property instead.
+
+### Make all queues on RabbitMQ quorum queue when `quorum.queues.enable=true`
+
+Date: 16/04/2024
+
+JIRA: https://issues.apache.org/jira/browse/JAMES-4027
+
+Now `quorum.queues.enable=true` enforces all the queues used by James to be quorum queue to achieve fully high availability.
+
+Some old classic queues (e.g. JMAP and mailbox eventbus work queues) would need to be deleted and let James re-create them as quorum queues.
+
+### Java 21
+
+Date: 25/03/2024
+
+Apache James now requires the use of Java 21 and of maven 3.8.1+.
+
+Extension developer might need to upgrade their extensions as well.
+
+### javax -> jakarta
+
+Date: 25/03/2024
+
+Apache James migrated to jakarta as a replacement for javax.
+
+Extension developers needs to also rely on Jakarta. This is mostly an import change:
+
+```java
+import javax.xxx;
+```
+
+Would become:
+
+
+```java
+import jakarta.xxx;
+```
+
+### JMX authentication for Spring
+
+Date: 19/12/2023
+
+Spring distribution now requires `jmxremote.access` and `jmxremote.password` files within the `/conf` folder in order to start.
+
+### Increase RabbitMQ consumer timeout on the task queue
+
+Date: 11/20/2023
+
+JIRA: https://issues.apache.org/jira/browse/JAMES-3955
+
+Before, the RabbitMQ default acknowledgement timeout on the `taskManagerWorkQueue` was 30 minutes.
+This is not enough for long-running tasks, therefore we advise to increase the acknowledgement timeout and now enforce it to 1 day by default.
+
+rf: https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
+
+To make the per queue argument feature work, update your RabbitMQ to version 3.12 at least.
+
+If you want the old behavior where consumer timeout defaults to 30 minutes, you can either not upgrade your RabbitMQ or set `task.queue.consumer.timeout=30minutes` in `rabbitmq.properties`.
+
+### Increase RabbitMQ consumer timeout on the task queue
+
+Date: 11/20/2023
+
+JIRA: https://issues.apache.org/jira/browse/JAMES-3955
+
+Before, the RabbitMQ default acknowledgement timeout on the `taskManagerWorkQueue` was 30 minutes.
+This is not enough for long-running tasks, therefore we advise to increase the acknowledgement timeout and now enforce it to 1 day by default.
+
+rf: https://www.rabbitmq.com/consumers.html#acknowledgement-timeout
+
+To make the per queue argument feature work, update your RabbitMQ to version 3.12 at least.
+
+If you want the old behavior where consumer timeout defaults to 30 minutes, you can either not upgrade your RabbitMQ or set `task.queue.consumer.timeout=30minutes` in `rabbitmq.properties`.
 
 ### RRT forwards now rewrite senders
 
@@ -41,6 +155,9 @@ This behaviour can be disabled via the RecipientRewriteTable mailet configuratio
     <rewriteSenderUponForward>false</rewriteSenderUponForward>
 <mailet/>>
 ```
+
+Note that now `JMAPFiltering` mailet requires the `rrt-error` processor for handling forward loops. We thus recommand adding
+this processor, that is part of the default configuration of your distribution.
 
 ### Change compaction strategy of blob_cache table
 Date: 18/09/2023
@@ -120,6 +237,10 @@ Date: 24/08/2023
 Date: 27/06/2023
 
 `imapserver.xml` needs to be modified to relocate `imapPackages` from imapServers tag into `imapServer` tags.
+
+## 3.8.1 version
+
+No specific operation to conduct from a 3.8.0 version.
 
 ## 3.8.0 version
 
@@ -344,6 +465,10 @@ In order to add this `authorized_users` column you need to run the following CQL
 ```
 ALTER TABLE james_keyspace.user ADD authorized_users set<text>;
 ```
+
+## 3.7.5 version
+
+No specific operation to conduct from a 3.7.4 version.
 
 ## 3.7.4 version
 

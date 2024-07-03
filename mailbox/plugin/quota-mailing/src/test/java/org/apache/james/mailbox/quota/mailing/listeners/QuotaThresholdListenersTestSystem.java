@@ -37,7 +37,6 @@ import org.apache.james.mailbox.quota.mailing.QuotaMailingListenerConfiguration;
 import org.apache.james.mailbox.store.MailboxSessionMapperFactory;
 import org.apache.james.mailbox.store.quota.DefaultUserQuotaRootResolver;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
-import org.apache.james.server.core.JamesServerResourceLoader;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.user.memory.MemoryUsersRepository;
 import org.apache.mailet.MailetContext;
@@ -53,7 +52,7 @@ class QuotaThresholdListenersTestSystem {
     QuotaThresholdListenersTestSystem(MailetContext mailetContext, EventStore eventStore, QuotaMailingListenerConfiguration configuration) throws MailboxException {
         eventBus = new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), EventBusTestFixture.RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters());
 
-        FileSystem fileSystem = new FileSystemImpl(new JamesServerResourceLoader("."));
+        FileSystem fileSystem = FileSystemImpl.forTesting();
 
         QuotaThresholdCrossingListener thresholdCrossingListener =
             new QuotaThresholdCrossingListener(mailetContext, MemoryUsersRepository.withVirtualHosting(NO_DOMAIN_LIST), fileSystem, eventStore, configuration,

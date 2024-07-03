@@ -20,13 +20,13 @@
 package org.apache.james.task.eventsourcing.distributed;
 
 import static com.rabbitmq.client.MessageProperties.PERSISTENT_TEXT_PLAIN;
-import static org.apache.james.backends.rabbitmq.Constants.ALLOW_QUORUM;
 import static org.apache.james.backends.rabbitmq.Constants.AUTO_DELETE;
 import static org.apache.james.backends.rabbitmq.Constants.DURABLE;
 import static org.apache.james.backends.rabbitmq.Constants.REQUEUE;
+import static org.apache.james.backends.rabbitmq.Constants.evaluateAutoDelete;
+import static org.apache.james.backends.rabbitmq.Constants.evaluateDurable;
 import static reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
@@ -123,11 +123,13 @@ public class RabbitMQWorkQueue implements WorkQueue {
         Mono<AMQP.Exchange.DeclareOk> declareExchange = sender
             .declareExchange(ExchangeSpecification.exchange(EXCHANGE_NAME))
             .retryWhen(Retry.backoff(NUM_RETRIES, FIRST_BACKOFF));
+        long consumerTimeout = Math.round(rabbitMQConfiguration.getTaskQueueConsumerTimeout().toMillis() * 1.1f);
         Mono<AMQP.Queue.DeclareOk> declareQueue = sender
             .declare(QueueSpecification.queue(QUEUE_NAME)
-                .durable(true)
-                .arguments(rabbitMQConfiguration.workQueueArgumentsBuilder(ALLOW_QUORUM)
+                .durable(evaluateDurable(DURABLE, rabbitMQConfiguration.isQuorumQueuesUsed()))
+                .arguments(rabbitMQConfiguration.workQueueArgumentsBuilder()
                     .singleActiveConsumer()
+                    .consumerTimeout(consumerTimeout)
                     .build()))
             .retryWhen(Retry.backoff(NUM_RETRIES, FIRST_BACKOFF));
         Mono<AMQP.Queue.BindOk> bindQueueToExchange = sender
@@ -142,13 +144,8 @@ public class RabbitMQWorkQueue implements WorkQueue {
 
     @Override
     public void restart() {
-        Disposable previousWorkQueueHandler = receiverHandle;
-        consumeWorkqueue();
-        previousWorkQueueHandler.dispose();
-
-        Disposable previousCancelHandler = this.cancelRequestListenerHandle;
-        registerCancelRequestsListener(cancelRequestQueueName.asString());
-        previousCancelHandler.dispose();
+        closeRabbitResources();
+        start();
     }
 
     private void consumeWorkqueue() {
@@ -191,6 +188,7 @@ public class RabbitMQWorkQueue implements WorkQueue {
 
     private Mono<Task.Result> executeOnWorker(TaskId taskId, Task task) {
         return worker.executeTask(new TaskWithId(taskId, task))
+            .timeout(rabbitMQConfiguration.getTaskQueueConsumerTimeout())
             .onErrorResume(error -> {
                 String errorMessage = String.format("Unable to run submitted Task %s", taskId.asString());
                 LOGGER.warn(errorMessage, error);
@@ -201,11 +199,11 @@ public class RabbitMQWorkQueue implements WorkQueue {
 
     private void listenToCancelRequests() {
         sender.declareExchange(ExchangeSpecification.exchange(CANCEL_REQUESTS_EXCHANGE_NAME)).block();
-        QueueArguments.Builder builder = QueueArguments.builder();
+        QueueArguments.Builder builder = rabbitMQConfiguration.workQueueArgumentsBuilder();
         rabbitMQConfiguration.getQueueTTL().ifPresent(builder::queueTTL);
         QueueSpecification specification = QueueSpecification.queue(cancelRequestQueueName.asString())
-            .durable(!DURABLE)
-            .autoDelete(AUTO_DELETE)
+            .durable(evaluateDurable(!DURABLE, rabbitMQConfiguration.isQuorumQueuesUsed()))
+            .autoDelete(evaluateAutoDelete(AUTO_DELETE, rabbitMQConfiguration.isQuorumQueuesUsed()))
             .arguments(builder.build());
         sender.declare(specification).block();
         sender.bind(BindingSpecification.binding(CANCEL_REQUESTS_EXCHANGE_NAME, CANCEL_REQUESTS_ROUTING_KEY, cancelRequestQueueName.asString())).block();
@@ -267,9 +265,17 @@ public class RabbitMQWorkQueue implements WorkQueue {
     public void close() {
         try {
             worker.close();
-        } catch (IOException e) {
+
+            sender.delete(QueueSpecification.queue(cancelRequestQueueName.asString()))
+                .timeout(Duration.ofSeconds(30))
+                .block();
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        closeRabbitResources();
+    }
+
+    private void closeRabbitResources() {
         Optional.ofNullable(receiverHandle).ifPresent(Disposable::dispose);
         Optional.ofNullable(sendCancelRequestsQueueHandle).ifPresent(Disposable::dispose);
         Optional.ofNullable(cancelRequestListenerHandle).ifPresent(Disposable::dispose);

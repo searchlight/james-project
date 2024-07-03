@@ -30,7 +30,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.mailbox.model.SearchQuery;
 import org.apache.james.mailbox.model.SearchQuery.Criterion;
@@ -44,6 +44,7 @@ import org.opensearch.client.opensearch._types.query_dsl.ChildScoreMode;
 import org.opensearch.client.opensearch._types.query_dsl.MatchAllQuery;
 import org.opensearch.client.opensearch._types.query_dsl.MatchQuery;
 import org.opensearch.client.opensearch._types.query_dsl.NestedQuery;
+import org.opensearch.client.opensearch._types.query_dsl.Operator;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.RangeQuery;
 import org.opensearch.client.opensearch._types.query_dsl.TermQuery;
@@ -196,11 +197,13 @@ public class CriterionConverter {
                 .should(new MatchQuery.Builder()
                     .field(JsonMessageConstants.TEXT_BODY)
                     .query(new FieldValue.Builder().stringValue(textCriterion.getOperator().getValue()).build())
+                    .operator(Operator.And)
                     .build()
                     ._toQuery())
                 .should(new MatchQuery.Builder()
                     .field(JsonMessageConstants.HTML_BODY)
                     .query(new FieldValue.Builder().stringValue(textCriterion.getOperator().getValue()).build())
+                    .operator(Operator.And)
                     .build()
                     ._toQuery())
                 .build()
@@ -210,16 +213,19 @@ public class CriterionConverter {
                 .should(new MatchQuery.Builder()
                     .field(JsonMessageConstants.TEXT_BODY)
                     .query(new FieldValue.Builder().stringValue(textCriterion.getOperator().getValue()).build())
+                    .operator(Operator.And)
                     .build()
                     ._toQuery())
                 .should(new MatchQuery.Builder()
                     .field(JsonMessageConstants.HTML_BODY)
                     .query(new FieldValue.Builder().stringValue(textCriterion.getOperator().getValue()).build())
+                    .operator(Operator.And)
                     .build()
                     ._toQuery())
                 .should(new MatchQuery.Builder()
                     .field(JsonMessageConstants.ATTACHMENTS + "." + JsonMessageConstants.Attachment.TEXT_CONTENT)
                     .query(new FieldValue.Builder().stringValue(textCriterion.getOperator().getValue()).build())
+                    .operator(Operator.And)
                     .build()
                     ._toQuery())
                 .build()
@@ -428,7 +434,10 @@ public class CriterionConverter {
     private Query convertSubject(SearchQuery.SubjectCriterion headerCriterion) {
         return new MatchQuery.Builder()
             .field(JsonMessageConstants.SUBJECT)
-            .query(new FieldValue.Builder().stringValue(headerCriterion.getSubject()).build())
+            .query(new FieldValue.Builder()
+                .stringValue(headerCriterion.getSubject())
+                .build())
+            .operator(Operator.And)
             .build()
             ._toQuery();
     }

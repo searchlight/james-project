@@ -27,16 +27,16 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.imap.api.ImapMessage;
 import org.apache.james.imap.api.ImapSessionState;
@@ -44,6 +44,7 @@ import org.apache.james.imap.api.process.ImapSession;
 import org.apache.james.imap.decode.DecodingException;
 import org.apache.james.imap.decode.ImapDecoder;
 import org.apache.james.imap.decode.ImapRequestLineReader;
+import org.apache.james.lifecycle.api.Disposable.LeakAware;
 import org.apache.james.protocols.netty.LineHandlerAware;
 
 import com.github.fge.lambdas.Throwing;
@@ -60,7 +61,6 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
-
 /**
  * {@link ByteToMessageDecoder} which will decode via and {@link ImapDecoder} instance
  */
@@ -70,6 +70,9 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
     private static final boolean RETRY = true;
     private static final String SINK = "SINK";
     private static final String SUBSCRIPTION = "SUBSCRIPTION";
+    public static final int UNAUTHENTICATE_LITERAL_MAX_SIZE = Optional.ofNullable(System.getProperty("james.imap.unauthenticated.literal.max.size"))
+        .map(Integer::parseInt)
+        .orElse(8192);
 
     private final ImapDecoder decoder;
     private final int inMemorySizeLimit;
@@ -85,9 +88,19 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
         this.maxFrameLength = maxFrameLength;
     }
 
+    private int literalSizeLimit(ImapSession session) {
+        if (session == null) {
+            return UNAUTHENTICATE_LITERAL_MAX_SIZE;
+        }
+        return switch (session.getState()) {
+            case NON_AUTHENTICATED, LOGOUT -> UNAUTHENTICATE_LITERAL_MAX_SIZE;
+            case AUTHENTICATED, SELECTED -> literalSizeLimit;
+        };
+    }
+
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        ctx.channel().attr(FRAME_DECODE_ATTACHMENT_ATTRIBUTE_KEY).set(new HashMap<>());
+        ctx.channel().attr(FRAME_DECODE_ATTACHMENT_ATTRIBUTE_KEY).set(new ConcurrentHashMap<>());
         super.channelActive(ctx);
     }
 
@@ -137,7 +150,11 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
                 // should not consume the line
                 // See JAMES-1199
                 if (readerAndSize.getRight() == -1) {
-                    readerAndSize.getLeft().consumeLine();
+                    try {
+                        readerAndSize.getLeft().consumeLine();
+                    } catch (DecodingException | NettyImapRequestLineReader.NotEnoughDataException e) {
+                        // Silent
+                    }
                 }
 
                 enableFraming(ctx);
@@ -183,6 +200,11 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
                 // check if we have a inMemorySize limit and if so if the
                 // expected size will fit into it
                 if (inMemorySizeLimit > 0 && inMemorySizeLimit < size) {
+                    ImapSession session = ctx.channel().attr(IMAP_SESSION_ATTRIBUTE_KEY).get();
+                    int literalSizeLimit = literalSizeLimit(session);
+                    if (literalSizeLimit > 0 && size > literalSizeLimit) {
+                        throw new IOException("Attempt to write a too big chunk into a file. " + size + " and limit " + literalSizeLimit);
+                    }
 
                     // ok seems like it will not fit in the memory limit so we
                     // need to store it in a temporary file
@@ -195,38 +217,29 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
                 }
 
             } else {
-
-                reader = new NettyImapRequestLineReader(ctx.channel(), in, retry, literalSizeLimit);
+                ImapSession session = ctx.channel().attr(IMAP_SESSION_ATTRIBUTE_KEY).get();
+                reader = new NettyImapRequestLineReader(ctx.channel(), in, retry, readerIndex, literalSizeLimit(session), maxFrameLength);
             }
         } else {
-            reader = new NettyImapRequestLineReader(ctx.channel(), in, retry, literalSizeLimit);
+            ImapSession session = ctx.channel().attr(IMAP_SESSION_ATTRIBUTE_KEY).get();
+            reader = new NettyImapRequestLineReader(ctx.channel(), in, retry, readerIndex, literalSizeLimit(session), maxFrameLength);
         }
         return Pair.of(reader, size);
     }
 
     private void uploadToAFile(ChannelHandlerContext ctx, ByteBuf in, Map<String, Object> attachment, int size, int readerIndex) throws IOException {
-        Sinks.Many<byte[]> sink;
+        Pair<Sinks.Many<byte[]>, AtomicInteger> sink;
 
         // check if we have created a temporary file already or if
         // we need to create a new one
         if (attachment.containsKey(SINK)) {
-            sink = (Sinks.Many<byte[]>) attachment.get(SINK);
+            sink = (Pair<Sinks.Many<byte[]>, AtomicInteger>) attachment.get(SINK);
         } else {
-            sink = Sinks.many().unicast().onBackpressureBuffer();
+            sink = Pair.of(Sinks.many().unicast().onBackpressureBuffer(), new AtomicInteger(0));
             attachment.put(SINK, sink);
 
-            FileChunkConsumer fileChunkConsumer = new FileChunkConsumer(size,
-                (file, written) -> {
-                    ImapRequestLineReader reader = new NettyStreamImapRequestLineReader(ctx.channel(), file, RETRY);
-
-                    try {
-                        parseImapMessage(ctx, null, attachment, Pair.of(reader, size), readerIndex)
-                            .ifPresent(ctx::fireChannelRead);
-                    } catch (DecodingException e) {
-                        ctx.fireExceptionCaught(e);
-                    }
-                });
-            Disposable subscribe = sink.asFlux()
+            FileChunkConsumer fileChunkConsumer = new FileChunkConsumer(size);
+            Disposable subscribe = sink.getLeft().asFlux()
                 .publishOn(Schedulers.boundedElastic())
                 .subscribe(fileChunkConsumer,
                     e -> {
@@ -234,9 +247,24 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
                         ctx.fireExceptionCaught(e);
                     },
                     () -> {
+                        fileChunkConsumer.finalizeDataTransfer();
+                        ImapRequestLineReader reader = new NettyStreamImapRequestLineReader(ctx.channel(), fileChunkConsumer.getFile(), RETRY, maxFrameLength);
 
+                        // Remove ongoing subscription: now on lifecycle of the message will be managed by ImapChannelUpstreamHandler.
+                        // Not doing this causes IDLEd IMAP connections to clear IMAP append literal while they are processed.
+                        Object removed = attachment.remove(SUBSCRIPTION);
+                        try {
+                            parseImapMessage(ctx, null, attachment, Pair.of(reader, size), readerIndex)
+                                .ifPresent(ctx::fireChannelRead);
+                        } catch (Exception e) {
+                            if (removed instanceof Disposable) {
+                                ((Disposable) removed).dispose();
+                            }
+                            ctx.fireExceptionCaught(e);
+                        }
                     });
             attachment.put(SUBSCRIPTION, (Disposable) () -> {
+                // Clear the file if the connection is reset while buffering the litteral.
                 subscribe.dispose();
                 fileChunkConsumer.discard();
             });
@@ -244,20 +272,60 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
         int readableBytes = in.readableBytes();
         byte[] bytes = new byte[readableBytes];
         in.readBytes(bytes);
-        sink.emitNext(bytes, FAIL_FAST);
+        sink.getLeft().emitNext(bytes, FAIL_FAST);
+        if (sink.getRight().addAndGet(readableBytes) >= size) {
+            sink.getLeft().tryEmitComplete();
+        }
+    }
+
+    public static class FileHolderInner extends LeakAware.Resource {
+        public static FileHolderInner create() throws IOException {
+            return new FileHolderInner(Files.createTempFile("imap-literal", ".tmp").toFile());
+        }
+
+        private final File file;
+
+        private FileHolderInner(File file) {
+            super(() -> FileUtils.deleteQuietly(file));
+            this.file = file;
+        }
+
+        public File getFile() {
+            return file;
+        }
+    }
+
+    public static class FileHolder extends LeakAware<FileHolderInner> {
+        public static FileHolder create() throws IOException {
+            return new FileHolder(FileHolderInner.create());
+        }
+
+        private final FileHolderInner file;
+
+        private FileHolder(FileHolderInner file) {
+            super(file);
+            this.file = file;
+        }
+
+        public File getFile() {
+            return file.file;
+        }
+
     }
 
     static class FileChunkConsumer implements Consumer<byte[]> {
         private final int size;
         private final AtomicInteger written = new AtomicInteger(0);
-        private final BiConsumer<File, Integer> callback;
         private final AtomicBoolean initialized = new AtomicBoolean(false);
         private OutputStream outputStream;
-        private File f;
+        private FileHolder file;
 
-        FileChunkConsumer(int size, BiConsumer<File, Integer> callback) {
+        FileChunkConsumer(int size) {
             this.size = size;
-            this.callback = callback;
+        }
+
+        public FileHolder getFile() {
+            return file;
         }
 
         @Override
@@ -267,17 +335,12 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
             }
 
             writeChunk(next);
-
-            // Check if all needed data was streamed to the file.
-            if (isComplete()) {
-                finalizeDataTransfer();
-            }
         }
 
         private void initialize() {
             try {
-                f = Files.createTempFile("imap-literal", ".tmp").toFile();
-                outputStream = new FileOutputStream(f, true);
+                file = FileHolder.create();
+                outputStream = new FileOutputStream(file.getFile(), true);
                 initialized.set(true);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -299,18 +362,14 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
             }
         }
 
-        private boolean isComplete() {
-            return written.get() == size;
-        }
 
         private void finalizeDataTransfer() {
             try {
+                outputStream.flush();
                 outputStream.close();
             } catch (IOException ignored) {
                 //ignore exception during close
             }
-
-            callback.accept(f, written.get());
         }
 
         void discard() {
@@ -318,8 +377,8 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
                 if (outputStream != null) {
                     outputStream.close();
                 }
-                if (f != null) {
-                    Files.delete(f.toPath());
+                if (file != null) {
+                    file.dispose();
                 }
             })).subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
@@ -328,13 +387,15 @@ public class ImapRequestFrameDecoder extends ByteToMessageDecoder implements Net
 
     public void disableFraming(ChannelHandlerContext ctx) {
         if (framingEnabled.getAndSet(false)) {
-            ctx.channel().pipeline().remove(FRAMER);
+            ctx.channel().pipeline().replace(FRAMER, FRAMER, new ChannelInboundHandlerAdapter() {
+
+            });
         }
     }
 
     public void enableFraming(ChannelHandlerContext ctx) {
         if (!framingEnabled.getAndSet(true)) {
-            ctx.channel().pipeline().addBefore(REQUEST_DECODER, FRAMER,
+            ctx.channel().pipeline().replace(FRAMER, FRAMER,
                 new SwitchableLineBasedFrameDecoder(ctx.channel().pipeline(), maxFrameLength, false));
         }
     }

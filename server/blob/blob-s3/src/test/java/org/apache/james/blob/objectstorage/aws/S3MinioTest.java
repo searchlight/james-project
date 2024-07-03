@@ -24,11 +24,13 @@ import static org.apache.james.blob.api.BlobStoreDAOFixture.TEST_BLOB_ID;
 import static org.apache.james.blob.api.BlobStoreDAOFixture.TEST_BUCKET_NAME;
 import static org.apache.james.blob.objectstorage.aws.DockerAwsS3Container.ACCESS_KEY_ID;
 import static org.apache.james.blob.objectstorage.aws.DockerAwsS3Container.SECRET_ACCESS_KEY;
+import static org.apache.james.blob.objectstorage.aws.S3BlobStoreConfiguration.UPLOAD_RETRY_EXCEPTION_PREDICATE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.james.blob.api.BlobId;
@@ -36,6 +38,8 @@ import org.apache.james.blob.api.BlobStoreDAO;
 import org.apache.james.blob.api.BlobStoreDAOContract;
 import org.apache.james.blob.api.HashBlobId;
 import org.apache.james.blob.api.TestBlobId;
+import org.apache.james.metrics.api.NoopGaugeRegistry;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -46,16 +50,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Testcontainers
 public class S3MinioTest implements BlobStoreDAOContract {
 
+    private static final String MINIO_IMAGE = "quay.io/minio/minio";
+    private static final String MINIO_TAG = "RELEASE.2024-01-29T03-56-32Z";
+    private static final String MINIO_IMAGE_FULL = MINIO_IMAGE + ":" + MINIO_TAG;
     private static final int MINIO_PORT = 9000;
     private static S3BlobStoreDAO testee;
 
     @Container
-    private static final GenericContainer<?> minioContainer = new GenericContainer<>("quay.io/minio/minio")
+    private static final GenericContainer<?> minioContainer = new GenericContainer<>(MINIO_IMAGE_FULL)
         .withExposedPorts(MINIO_PORT)
         .withEnv("MINIO_ROOT_USER", ACCESS_KEY_ID)
         .withEnv("MINIO_ROOT_PASSWORD", SECRET_ACCESS_KEY)
@@ -74,9 +82,11 @@ public class S3MinioTest implements BlobStoreDAOContract {
         S3BlobStoreConfiguration s3Configuration = S3BlobStoreConfiguration.builder()
             .authConfiguration(authConfiguration)
             .region(DockerAwsS3Container.REGION)
+            .uploadRetrySpec(Optional.of(Retry.backoff(3, java.time.Duration.ofSeconds(1))
+                .filter(UPLOAD_RETRY_EXCEPTION_PREDICATE)))
             .build();
 
-        testee = new S3BlobStoreDAO(s3Configuration, new TestBlobId.Factory());
+        testee = new S3BlobStoreDAO(s3Configuration, new TestBlobId.Factory(), new RecordingMetricFactory(), new NoopGaugeRegistry());
     }
 
     @AfterAll

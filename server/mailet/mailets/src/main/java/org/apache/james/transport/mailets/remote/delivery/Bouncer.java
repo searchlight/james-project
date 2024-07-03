@@ -26,8 +26,8 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Optional;
 
-import javax.mail.MessagingException;
-import javax.mail.SendFailedException;
+import jakarta.mail.MessagingException;
+import jakarta.mail.SendFailedException;
 
 import org.apache.james.core.MailAddress;
 import org.apache.mailet.Attribute;
@@ -35,8 +35,11 @@ import org.apache.mailet.AttributeName;
 import org.apache.mailet.AttributeValue;
 import org.apache.mailet.Mail;
 import org.apache.mailet.MailetContext;
+import org.apache.mailet.ProcessingState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.github.fge.lambdas.Throwing;
 
 public class Bouncer {
     private static final Logger LOGGER = LoggerFactory.getLogger(Bouncer.class);
@@ -53,22 +56,14 @@ public class Bouncer {
         this.mailetContext = mailetContext;
     }
 
-    public void bounce(Mail mail, Exception ex) {
-        if (!mail.hasSender()) {
-            LOGGER.debug("Null Sender: no bounce will be generated for {}", mail.getName());
-        } else {
-            configuration.getBounceProcessor().ifPresentOrElse(
-                bounceProcessor -> {
-                    computeErrorCode(ex).ifPresent(mail::setAttribute);
-                    mail.setAttribute(new Attribute(DELIVERY_ERROR, AttributeValue.of(getErrorMsg(ex))));
-                    try {
-                        mailetContext.sendMail(mail, bounceProcessor.getValue());
-                    } catch (MessagingException e) {
-                        LOGGER.warn("Exception re-inserting failed mail: ", e);
-                    }
-                },
-                () -> bounceWithMailetContext(mail, ex));
-        }
+    public void bounce(Mail mail, Exception ex) throws MessagingException {
+        configuration.getBounceProcessor().ifPresentOrElse(
+            Throwing.<ProcessingState>consumer(bounceProcessor -> {
+                computeErrorCode(ex).ifPresent(mail::setAttribute);
+                mail.setAttribute(new Attribute(DELIVERY_ERROR, AttributeValue.of(getErrorMsg(ex))));
+                mailetContext.sendMail(mail, bounceProcessor.getValue());
+            }).sneakyThrow(),
+            Throwing.runnable(() -> bounceWithMailetContext(mail, ex)).sneakyThrow());
     }
 
     private Optional<Attribute> computeErrorCode(Exception ex) {
@@ -80,14 +75,12 @@ public class Bouncer {
             .map(code -> new Attribute(DELIVERY_ERROR_CODE, AttributeValue.of(code)));
     }
 
-    private void bounceWithMailetContext(Mail mail, Exception ex) {
-        LOGGER.debug("Sending failure message {}", mail.getName());
-        try {
+    private void bounceWithMailetContext(Mail mail, Exception ex) throws MessagingException {
+        if (!mail.hasSender()) {
+            LOGGER.debug("Null Sender: no bounce will be generated for {}", mail.getName());
+        } else {
+            LOGGER.debug("Sending failure message {}", mail.getName());
             mailetContext.bounce(mail, explanationText(mail, ex));
-        } catch (MessagingException me) {
-            LOGGER.warn("Encountered unexpected messaging exception while bouncing message", me);
-        } catch (Exception e) {
-            LOGGER.warn("Encountered unexpected exception while bouncing message", e);
         }
     }
 

@@ -35,9 +35,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import javax.inject.Inject;
-import javax.inject.Named;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+import jakarta.mail.Flags;
 
 import org.apache.james.backends.opensearch.DocumentId;
 import org.apache.james.backends.opensearch.OpenSearchIndexer;
@@ -52,12 +52,14 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.mailbox.MessageUid;
 import org.apache.james.mailbox.SessionProvider;
 import org.apache.james.mailbox.events.MailboxEvents;
+import org.apache.james.mailbox.exception.MailboxNotFoundException;
 import org.apache.james.mailbox.model.Mailbox;
 import org.apache.james.mailbox.model.MailboxId;
 import org.apache.james.mailbox.model.MessageId;
 import org.apache.james.mailbox.model.MessageMetaData;
 import org.apache.james.mailbox.model.SearchQuery;
 import org.apache.james.mailbox.model.UpdatedFlags;
+import org.apache.james.mailbox.opensearch.IndexBody;
 import org.apache.james.mailbox.opensearch.MailboxOpenSearchConstants;
 import org.apache.james.mailbox.opensearch.OpenSearchMailboxConfiguration;
 import org.apache.james.mailbox.opensearch.json.MessageToOpenSearchJson;
@@ -227,6 +229,7 @@ public class OpenSearchListeningMessageSearchIndex extends ListeningMessageSearc
     
     private final Metric reIndexNotFoundMetric;
     private final IndexingStrategy indexingStrategy;
+    private final IndexBody indexBody;
 
     @Inject
     public OpenSearchListeningMessageSearchIndex(MailboxSessionMapperFactory factory,
@@ -248,6 +251,7 @@ public class OpenSearchListeningMessageSearchIndex extends ListeningMessageSearc
         } else {
             this.indexingStrategy = new NaiveIndexingStrategy();
         }
+        this.indexBody = configuration.getIndexBody();
         this.reIndexNotFoundMetric = metricFactory.generate("opensearch_reindex_not_found");
 
         LOGGER.info("OpenSearchMessageSearchIndex activated with index strategy: {}", indexingStrategy.getClass().getSimpleName());
@@ -296,7 +300,18 @@ public class OpenSearchListeningMessageSearchIndex extends ListeningMessageSearc
     private Mono<Void> processAddedEvent(MailboxSession session, MailboxEvents.Added addedEvent, MailboxId mailboxId) {
         return factory.getMailboxMapper(session)
             .findMailboxById(mailboxId)
-            .flatMap(mailbox -> handleAdded(session, mailbox, addedEvent));
+            .flatMap(mailbox -> handleAdded(session, mailbox, addedEvent, chooseFetchType()))
+            .onErrorResume(MailboxNotFoundException.class, e -> {
+                LOGGER.info("Added event skipped for deleted mailbox {}", mailboxId.serialize());
+                return Mono.empty();
+            });
+    }
+
+    private FetchType chooseFetchType() {
+        if (indexBody == IndexBody.YES) {
+            return FetchType.FULL;
+        }
+        return FetchType.HEADERS;
     }
 
     @Override

@@ -21,7 +21,7 @@ package org.apache.james.mailbox.store;
 
 import static org.apache.james.mailbox.MailboxManager.MailboxSearchFetchType.Minimal;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxManager;
@@ -68,7 +68,7 @@ public class SystemMailboxesProviderImpl implements SystemMailboxesProvider {
     }
 
     private Flux<MessageManager> searchMessageManagerByMailboxRole(Role aRole, Username username) {
-        MailboxSession session = mailboxManager.createSystemSession(username);;
+        MailboxSession session = mailboxManager.createSystemSession(username);
         MailboxQuery mailboxQuery = MailboxQuery.privateMailboxesBuilder(session)
             .expression(new PrefixedWildcard(aRole.getDefaultMailbox()))
             .build();

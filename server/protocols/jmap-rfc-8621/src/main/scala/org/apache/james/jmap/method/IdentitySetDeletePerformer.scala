@@ -19,7 +19,7 @@
 
 package org.apache.james.jmap.method
 
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.jmap.api.identity.{IdentityForbiddenDeleteException, IdentityRepository}
 import org.apache.james.jmap.api.model.IdentityId
 import org.apache.james.jmap.core.SetError
@@ -27,16 +27,24 @@ import org.apache.james.jmap.core.SetError.SetErrorDescription
 import org.apache.james.jmap.mail.{IdentitySetRequest, UnparsedIdentityId}
 import org.apache.james.jmap.method.IdentitySetDeletePerformer.{IdentityDeletionFailure, IdentityDeletionResult, IdentityDeletionResults, IdentityDeletionSuccess}
 import org.apache.james.mailbox.MailboxSession
+import org.slf4j.LoggerFactory
 import reactor.core.scala.publisher.{SFlux, SMono}
 
 object IdentitySetDeletePerformer {
+  private val LOGGER = LoggerFactory.getLogger(classOf[IdentitySetDeletePerformer])
   sealed trait IdentityDeletionResult
   case class IdentityDeletionSuccess(identityId: IdentityId) extends IdentityDeletionResult
   case class IdentityDeletionFailure(identityId: UnparsedIdentityId, exception: Throwable) extends IdentityDeletionResult {
     def asIdentitySetError: SetError = exception match {
-      case e: IdentityForbiddenDeleteException => SetError.forbidden(SetErrorDescription(e.getMessage))
-      case e: IllegalArgumentException => SetError.invalidArguments(SetErrorDescription(s"${identityId.id} is not a IdentityId: ${e.getMessage}"))
-      case _ => SetError.serverFail(SetErrorDescription(exception.getMessage))
+      case e: IdentityForbiddenDeleteException =>
+        LOGGER.info("Forbidden to delete server set identity")
+        SetError.forbidden(SetErrorDescription(e.getMessage))
+      case e: IllegalArgumentException =>
+        LOGGER.info("Illegal argument in Identity/set delete", e)
+        SetError.invalidArguments(SetErrorDescription(s"${identityId.id} is not a IdentityId: ${e.getMessage}"))
+      case e =>
+        LOGGER.error("Failed to delete identity", e)
+        SetError.serverFail(SetErrorDescription(exception.getMessage))
     }
   }
   case class IdentityDeletionResults(results: Seq[IdentityDeletionResult]) {
@@ -67,6 +75,6 @@ class IdentitySetDeletePerformer @Inject()(identityRepository: IdentityRepositor
   private def delete(unparsedId: UnparsedIdentityId, mailboxSession: MailboxSession): SMono[IdentityDeletionResult] =
     unparsedId.validate
       .fold(e => SMono.error(e),
-        id => SMono.fromPublisher(identityRepository.delete(mailboxSession.getUser, Seq(id)))
+        id => SMono.fromPublisher(identityRepository.delete(mailboxSession.getUser, Set(id)))
           .`then`(SMono.just[IdentityDeletionResult](IdentityDeletionSuccess(id))))
 }

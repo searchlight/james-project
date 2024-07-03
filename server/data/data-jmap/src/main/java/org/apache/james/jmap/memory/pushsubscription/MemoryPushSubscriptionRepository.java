@@ -22,7 +22,6 @@ package org.apache.james.jmap.memory.pushsubscription;
 import static org.apache.james.jmap.api.pushsubscription.PushSubscriptionHelpers.evaluateExpiresTime;
 import static org.apache.james.jmap.api.pushsubscription.PushSubscriptionHelpers.isInThePast;
 import static org.apache.james.jmap.api.pushsubscription.PushSubscriptionHelpers.isInvalidPushSubscriptionKey;
-import static org.apache.james.jmap.api.pushsubscription.PushSubscriptionHelpers.isNotOutdatedSubscription;
 
 import java.time.Clock;
 import java.time.ZonedDateTime;
@@ -30,7 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.jmap.api.model.DeviceClientIdInvalidException;
@@ -126,15 +125,13 @@ public class MemoryPushSubscriptionRepository implements PushSubscriptionReposit
     public Publisher<PushSubscription> get(Username username, Set<PushSubscriptionId> ids) {
         return Flux.fromStream(table.row(username).entrySet().stream())
             .filter(entry -> ids.contains(entry.getKey()))
-            .map(Map.Entry::getValue)
-            .filter(subscription -> isNotOutdatedSubscription(subscription, clock));
+            .map(Map.Entry::getValue);
     }
 
     @Override
     public Publisher<PushSubscription> list(Username username) {
         return Flux.fromStream(table.row(username).entrySet().stream())
-            .map(Map.Entry::getValue)
-            .filter(subscription -> isNotOutdatedSubscription(subscription, clock));
+            .map(Map.Entry::getValue);
     }
 
     @Override

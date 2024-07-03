@@ -27,10 +27,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.core.Is.is;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.Optional;
 
-import javax.mail.MessagingException;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.core.Username;
 import org.apache.james.junit.categories.Unstable;
@@ -56,12 +57,12 @@ import io.restassured.specification.RequestSpecification;
 
 @Tag(Unstable.TAG)
 class RspamdHttpClientTest {
-    private final static String SPAM_MESSAGE_PATH = "mail/spam/spam8.eml";
-    private final static String HAM_MESSAGE_PATH = "mail/ham/ham1.eml";
-    private final static String VIRUS_MESSAGE_PATH = "mail/attachment/inlineVirusTextAttachment.eml";
-    private final static String NON_VIRUS_MESSAGE_PATH = "mail/attachment/inlineNonVirusTextAttachment.eml";
-    private final static Username BOB = Username.of("bob@domain.tld");
-    private final static Username ALICE = Username.of("alice@domain.tld");
+    private static final String SPAM_MESSAGE_PATH = "mail/spam/spam8.eml";
+    private static final String HAM_MESSAGE_PATH = "mail/ham/ham1.eml";
+    private static final String VIRUS_MESSAGE_PATH = "mail/attachment/inlineVirusTextAttachment.eml";
+    private static final String NON_VIRUS_MESSAGE_PATH = "mail/attachment/inlineNonVirusTextAttachment.eml";
+    private static final Username BOB = Username.of("bob@domain.tld");
+    private static final Username ALICE = Username.of("alice@domain.tld");
 
     @RegisterExtension
     static RspamdExtension rspamdExtension = new RspamdExtension();
@@ -315,6 +316,15 @@ class RspamdHttpClientTest {
         RspamdHttpClient client = new RspamdHttpClient(configuration);
 
         assertThat(client.ping().block().status()).isEqualTo(HttpResponseStatus.OK);
+    }
+
+    @Test
+    void shouldNotFailOnEmptyContent() {
+        RspamdClientConfiguration configuration = new RspamdClientConfiguration(rspamdExtension.getBaseUrl(), PASSWORD, Optional.empty());
+        RspamdHttpClient client = new RspamdHttpClient(configuration);
+
+        client.reportAsSpam(ReactorUtils.toChunks(new ByteArrayInputStream("".getBytes()),
+            BUFFER_SIZE), RspamdHttpClient.Options.forUser(BOB)).block();
     }
 
     private void reportAsSpam(RspamdHttpClient client, InputStream inputStream) {

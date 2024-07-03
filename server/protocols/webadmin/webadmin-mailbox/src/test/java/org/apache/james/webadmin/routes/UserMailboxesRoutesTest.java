@@ -23,7 +23,7 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static io.restassured.RestAssured.with;
 import static io.restassured.http.ContentType.JSON;
-import static javax.mail.Flags.Flag.SEEN;
+import static jakarta.mail.Flags.Flag.SEEN;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 import static org.apache.james.webadmin.routes.UserMailboxesRoutes.USERS_BASE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.backends.opensearch.DockerOpenSearchExtension;
 import org.apache.james.backends.opensearch.OpenSearchIndexer;
@@ -348,7 +348,7 @@ class UserMailboxesRoutesTest {
                 .containsEntry("statusCode", BAD_REQUEST_400)
                 .containsEntry("type", "InvalidArgument")
                 .containsEntry("message", "Attempt to create an invalid mailbox")
-                .containsEntry("details", "#private:username:#myMailboxName contains one of the forbidden characters %* or starts with #");
+                .containsEntry("details", "#private:username:#myMailboxName contains one of the forbidden characters %*\r\n or starts with #");
         }
 
         @Test
@@ -412,7 +412,7 @@ class UserMailboxesRoutesTest {
                 .containsEntry("statusCode", BAD_REQUEST_400)
                 .containsEntry("type", "InvalidArgument")
                 .containsEntry("message", "Attempt to test existence of an invalid mailbox")
-                .containsEntry("details", "#private:username:myMailboxName* contains one of the forbidden characters %* or starts with #");
+                .containsEntry("details", "#private:username:myMailboxName* contains one of the forbidden characters %*\r\n or starts with #");
         }
 
         @Test
@@ -467,7 +467,7 @@ class UserMailboxesRoutesTest {
                 .containsEntry("statusCode", BAD_REQUEST_400)
                 .containsEntry("type", "InvalidArgument")
                 .containsEntry("message", "Attempt to test existence of an invalid mailbox")
-                .containsEntry("details", "#private:username:myMailboxName% contains one of the forbidden characters %* or starts with #");
+                .containsEntry("details", "#private:username:myMailboxName% contains one of the forbidden characters %*\r\n or starts with #");
         }
 
         @Test
@@ -522,7 +522,7 @@ class UserMailboxesRoutesTest {
                 .containsEntry("statusCode", BAD_REQUEST_400)
                 .containsEntry("type", "InvalidArgument")
                 .containsEntry("message", "Attempt to test existence of an invalid mailbox")
-                .containsEntry("details", "#private:username:#myMailboxName contains one of the forbidden characters %* or starts with #");
+                .containsEntry("details", "#private:username:#myMailboxName contains one of the forbidden characters %*\r\n or starts with #");
         }
 
         @Test

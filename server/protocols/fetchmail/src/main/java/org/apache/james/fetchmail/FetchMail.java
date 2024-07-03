@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import javax.mail.MessagingException;
-import javax.mail.Session;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Session;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.HierarchicalConfiguration;
@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory;
  * <p/>
  * <p>
  * There are two kinds of Message Store Accounts, static and dynamic. Static
- * accounts are expliciltly declared in the Configuration. Dynamic accounts are
+ * accounts are explicitly declared in the Configuration. Dynamic accounts are
  * built each time the task is executed, one per each user defined to James,
  * using the James user name with a configurable prefix and suffix to define the
  * host user identity and recipient identity for each Account. Dynamic accounts
@@ -75,7 +75,7 @@ import org.slf4j.LoggerFactory;
  * <p/>
  * <p>
  * To fully understand the operations supported by this task, read the Class
- * documention for each Class in the delegation chain starting with this class'
+ * documentation for each Class in the delegation chain starting with this class'
  * delegate, <code>StoreProcessor</code>.
  * </p>
  */
@@ -409,7 +409,7 @@ public class FetchMail implements Runnable, Configurable {
 
         setParsedConfiguration(parsedConfiguration);
 
-        // Setup the Accounts
+        // Set up the Accounts
         List<HierarchicalConfiguration<ImmutableNode>> allAccounts = configuration.configurationsAt("accounts");
         if (allAccounts.size() < 1) {
             throw new ConfigurationException("Missing <accounts> section.");
@@ -425,17 +425,15 @@ public class FetchMail implements Runnable, Configurable {
 
         int i = 0;
         // Create an Account for every configured account
-        for (ImmutableNode accountsChild : accounts.getNodeModel().getNodeHandler().getRootNode().getChildren()) {
+        for (HierarchicalConfiguration<ImmutableNode> conf : configuration.childConfigurationsAt("accounts")) {
 
-            String accountsChildName = accountsChild.getNodeName();
-
-            List<HierarchicalConfiguration<ImmutableNode>> accountsChildConfig = accounts.configurationsAt(accountsChildName);
-            HierarchicalConfiguration<ImmutableNode> conf = accountsChildConfig.get(i);
+            String accountsChildName = conf.getRootElementName();
 
             if ("alllocal".equals(accountsChildName)) {
                 // <allLocal> is dynamic, save the parameters for accounts to
                 // be created when the task is triggered
                 getParsedDynamicAccountParameters().add(new ParsedDynamicAccountParameters(i, conf));
+                i++;
                 continue;
             }
 
@@ -443,12 +441,12 @@ public class FetchMail implements Runnable, Configurable {
                 // Create an Account for the named user and
                 // add it to the list of static accounts
                 getStaticAccounts().add(new Account(i, parsedConfiguration, conf.getString("[@user]"), conf.getString("[@password]"), conf.getString("[@recipient]"), conf.getBoolean("[@ignorercpt-header]"), conf.getString("[@customrcpt-header]", ""), getSession()));
+                i++;
                 continue;
             }
 
             throw new ConfigurationException("Illegal token: <" + accountsChildName + "> in <accounts>");
         }
-        i++;
     }
 
     /**
@@ -653,7 +651,7 @@ public class FetchMail implements Runnable, Configurable {
         try {
             newAccounts = new HashMap<>(getLocalUsers().countUsers() * getParsedDynamicAccountParameters().size());
         } catch (UsersRepositoryException e) {
-            throw new ConfigurationException("Unable to acces UsersRepository", e);
+            throw new ConfigurationException("Unable to access UsersRepository", e);
         }
         Map<DynamicAccountKey, DynamicAccount> oldAccounts = getDynamicAccountsBasic();
         if (null == oldAccounts) {

@@ -19,11 +19,9 @@
 
 package org.apache.james.jmap.mail
 
-import java.io.OutputStream
 import java.time.ZoneId
 
 import cats.implicits._
-import com.google.common.io.CountingOutputStream
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.auto._
 import eu.timepit.refined.numeric.NonNegative
@@ -32,15 +30,15 @@ import org.apache.commons.io.IOUtils
 import org.apache.james.jmap.api.model.Size
 import org.apache.james.jmap.api.model.Size.Size
 import org.apache.james.jmap.core.Properties
-import org.apache.james.jmap.mail.EmailBodyPart.{FILENAME_PREFIX, MULTIPART_ALTERNATIVE, TEXT_HTML, TEXT_PLAIN, of}
+import org.apache.james.jmap.mail.EmailBodyPart.{FILENAME_PREFIX, MDN_TYPE, MULTIPART_ALTERNATIVE, TEXT_HTML, TEXT_PLAIN, of}
 import org.apache.james.jmap.mail.PartId.PartIdValue
-import org.apache.james.mailbox.model.{Cid, MessageAttachmentMetadata, MessageResult}
-import org.apache.james.mime4j.Charsets.DEFAULT_CHARSET
+import org.apache.james.jmap.mime4j. SizeUtils
+import org.apache.james.mailbox.model.{Cid, MessageAttachmentMetadata}
+import org.apache.james.mime4j.Charsets.ISO_8859_1
 import org.apache.james.mime4j.codec.{DecodeMonitor, DecoderUtil}
 import org.apache.james.mime4j.dom.field.{ContentDispositionField, ContentLanguageField, ContentTypeField, FieldName}
-import org.apache.james.mime4j.dom.{Entity, Message, Multipart, SingleBody, TextBody => Mime4JTextBody}
-import org.apache.james.mime4j.message.{DefaultMessageBuilder, DefaultMessageWriter}
-import org.apache.james.mime4j.stream.{Field, MimeConfig, RawField}
+import org.apache.james.mime4j.dom.{Entity, Message, Multipart, TextBody => Mime4JTextBody}
+import org.apache.james.mime4j.stream.{Field, RawField}
 import org.apache.james.util.html.HtmlTextExtractor
 
 import scala.jdk.CollectionConverters._
@@ -69,20 +67,12 @@ case class PartId(value: PartIdValue) {
 object EmailBodyPart {
   val TEXT_PLAIN: Type = Type("text/plain")
   val TEXT_HTML: Type = Type("text/html")
+  val MDN_TYPE: Type = Type("message/disposition-notification")
   val MULTIPART_ALTERNATIVE: Type = Type("multipart/alternative")
   val FILENAME_PREFIX = "name"
 
   val defaultProperties: Properties = Properties("partId", "blobId", "size", "name", "type", "charset", "disposition", "cid", "language", "location")
   val allowedProperties: Properties = defaultProperties ++ Properties("subParts", "headers")
-
-  def ofMessage(properties: Option[Properties], zoneId: ZoneId, blobId: BlobId, message: MessageResult): Try[EmailBodyPart] = {
-    val defaultMessageBuilder = new DefaultMessageBuilder
-    defaultMessageBuilder.setMimeEntityConfig(MimeConfig.PERMISSIVE)
-    defaultMessageBuilder.setDecodeMonitor(DecodeMonitor.SILENT)
-
-    val mime4JMessage = Try(defaultMessageBuilder.parseMessage(message.getFullContent.getInputStream))
-    mime4JMessage.flatMap(of(properties, zoneId, blobId, _))
-  }
 
   def fromAttachment(properties: Option[Properties], zoneId: ZoneId, attachment: MessageAttachmentMetadata, entity: Message): EmailBodyPart = {
     def parseDisposition(attachment: MessageAttachmentMetadata): Option[Disposition] =
@@ -176,15 +166,7 @@ object EmailBodyPart {
     .headOption
     .map(_.getBody)
 
-  private def size(entity: Entity): Try[Size] =
-    entity.getBody match {
-      case body: SingleBody => refineSize(body.size())
-      case body =>
-        val countingOutputStream: CountingOutputStream = new CountingOutputStream(OutputStream.nullOutputStream())
-        val writer = new DefaultMessageWriter
-        writer.writeBody(body, countingOutputStream)
-        refineSize(countingOutputStream.getCount)
-    }
+  private def size(entity: Entity): Try[Size] = refineSize(SizeUtils.sizeOf(entity))
 
   private def refineSize(l: Long): Try[Size] = refineV[NonNegative](l) match {
     case scala.Right(size) => Success(size)
@@ -283,7 +265,7 @@ case class EmailBodyPart(partId: PartId,
   def bodyContent: Try[Option[EmailBodyValue]] = entity.getBody match {
     case textBody: Mime4JTextBody =>
       for {
-        value <- Try(IOUtils.toString(textBody.getInputStream, Option(textBody.getCharset).getOrElse(DEFAULT_CHARSET)))
+        value <- Try(IOUtils.toString(textBody.getInputStream, Option(textBody.getCharset).getOrElse(ISO_8859_1)))
       } yield {
         Some(EmailBodyValue(value = value,
           isEncodingProblem = IsEncodingProblem(false),
@@ -320,7 +302,7 @@ case class EmailBodyPart(partId: PartId,
     Nil
   }
 
-  private val hasTextMediaType: Boolean = `type`.equals(TEXT_PLAIN) || `type`.equals(TEXT_HTML)
+  private val hasTextMediaType: Boolean = `type`.equals(TEXT_PLAIN) || `type`.equals(TEXT_HTML) || `type`.equals(MDN_TYPE)
   private val shouldBeDisplayedAsBody: Boolean = hasTextMediaType && !disposition.contains(Disposition.ATTACHMENT )
   private val shouldBeDisplayedAsBodyStrict: Boolean = hasTextMediaType && disposition.isEmpty && cid.isEmpty
   private val shouldBeDisplayedAsAttachment: Boolean = !shouldBeDisplayedAsBodyStrict && subParts.isEmpty

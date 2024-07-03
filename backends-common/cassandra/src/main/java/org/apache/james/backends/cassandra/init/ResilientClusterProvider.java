@@ -25,10 +25,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.Callable;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
-import javax.inject.Provider;
-import javax.inject.Singleton;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.inject.Provider;
+import jakarta.inject.Singleton;
 
 import org.apache.james.backends.cassandra.init.configuration.ClusterConfiguration;
 import org.apache.james.backends.cassandra.init.configuration.KeyspaceConfiguration;
@@ -48,11 +48,13 @@ public class ResilientClusterProvider implements Provider<CqlSession> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ResilientClusterProvider.class);
 
     private final CqlSession cluster;
+    private final ClusterConfiguration clusterConfiguration;
 
     @VisibleForTesting
     @Inject
     ResilientClusterProvider(ClusterConfiguration configuration, KeyspaceConfiguration keyspaceConfiguration) {
-        Duration waitDelay = Duration.ofMillis(configuration.getMinDelay());
+        clusterConfiguration = configuration;
+        Duration waitDelay = Duration.ofMillis(clusterConfiguration.getMinDelay());
         cluster = Mono.fromCallable(getClusterRetryCallable(configuration, keyspaceConfiguration))
             .doOnError(e -> LOGGER.warn("Error establishing Cassandra connection. Next retry scheduled in {} ms", waitDelay, e))
             .retryWhen(Retry.backoff(configuration.getMaxRetry(), waitDelay).scheduler(Schedulers.boundedElastic()))
@@ -78,6 +80,14 @@ public class ResilientClusterProvider implements Provider<CqlSession> {
     @Override
     public CqlSession get() {
         return cluster;
+    }
+
+    public CqlSession get(KeyspaceConfiguration keyspaceConfiguration) {
+        Duration waitDelay = Duration.ofMillis(clusterConfiguration.getMinDelay());
+        return Mono.fromCallable(getClusterRetryCallable(clusterConfiguration, keyspaceConfiguration))
+            .doOnError(e -> LOGGER.warn("Error establishing Cassandra connection. Next retry scheduled in {} ms", waitDelay, e))
+            .retryWhen(Retry.backoff(clusterConfiguration.getMaxRetry(), waitDelay).scheduler(Schedulers.boundedElastic()))
+            .block();
     }
 
     @PreDestroy

@@ -146,6 +146,86 @@ trait EmailSubmissionSetMethodContract {
         .hasSize(1)
     }
   }
+  
+  @Test
+  def emailSubmissionSetCreateShouldSendMailSuccessfullyWithNamedFrom(server: GuiceJamesServer): Unit = {
+    val message: Message = Message.Builder
+      .of
+      .setSubject("test")
+      .setSender(BOB.asString)
+      .setFrom("BOB <" + BOB.asString + ">")
+      .setTo(ANDRE.asString, "BOB <" + BOB.asString + ">")
+      .setBody("testmail", StandardCharsets.UTF_8)
+      .build
+
+    val bobDraftsPath = MailboxPath.forUser(BOB, DefaultMailboxes.DRAFTS)
+    server.getProbe(classOf[MailboxProbeImpl]).createMailbox(bobDraftsPath)
+    val messageId: MessageId = server.getProbe(classOf[MailboxProbeImpl]).appendMessage(BOB.asString(), bobDraftsPath, AppendCommand.builder()
+      .build(message))
+      .getMessageId
+
+    val andreInboxPath = MailboxPath.inbox(ANDRE)
+    val andreInboxId: MailboxId = server.getProbe(classOf[MailboxProbeImpl]).createMailbox(andreInboxPath)
+
+    val requestBob =
+      s"""{
+         |  "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
+         |  "methodCalls": [
+         |     ["EmailSubmission/set", {
+         |       "accountId": "$ACCOUNT_ID",
+         |       "create": {
+         |         "k1490": {
+         |           "emailId": "${messageId.serialize}",
+         |           "envelope": {
+         |             "mailFrom": {"email": "${BOB.asString}"},
+         |             "rcptTo": [{"email": "${ANDRE.asString}"}]
+         |           }
+         |         }
+         |    }
+         |  }, "c1"]]
+         |}""".stripMargin
+
+    `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(requestBob)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+
+    val requestAndre =
+      s"""{
+         |  "using": ["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
+         |  "methodCalls": [[
+         |    "Email/query",
+         |    {
+         |      "accountId": "$ANDRE_ACCOUNT_ID",
+         |      "filter": {"inMailbox": "${andreInboxId.serialize}"}
+         |    },
+         |    "c1"]]
+         |}""".stripMargin
+
+    awaitAtMostTenSeconds.untilAsserted { () =>
+      val response = `given`(
+        baseRequestSpecBuilder(server)
+          .setAuth(authScheme(UserCredential(ANDRE, ANDRE_PASSWORD)))
+          .addHeader(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+          .setBody(requestAndre)
+          .build, new ResponseSpecBuilder().build)
+        .post
+      .`then`
+        .statusCode(SC_OK)
+        .contentType(JSON)
+        .extract
+        .body
+        .asString
+
+      assertThatJson(response)
+        .inPath("methodResponses[0][1].ids")
+        .isArray
+        .hasSize(1)
+    }
+  }
 
   @Test
   def envelopeShouldBeOptional(server: GuiceJamesServer): Unit = {
@@ -1988,5 +2068,127 @@ trait EmailSubmissionSetMethodContract {
         .isArray
         .hasSize(1)
     }
+  }
+
+  @Test
+  def onSuccessUpdateEmailShouldNotInvokedWhenEmailSubmissionNotCreated(): Unit = {
+    val requestBob =
+      s"""{
+         |  "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
+         |  "methodCalls": [
+         |     ["EmailSubmission/set", {
+         |       "accountId": "$ACCOUNT_ID",
+         |       "create": {
+         |         "k1490": {
+         |           "emailId": "${randomMessageId.serialize}",
+         |           "extra": true,
+         |           "envelope": {
+         |             "mailFrom": {"email": "${BOB.asString}"},
+         |             "rcptTo": [{"email": "${ANDRE.asString}"}]
+         |           }
+         |         }
+         |    },
+         |    "onSuccessUpdateEmail": {
+         |         "#k1490": {
+         |           "keywords": {"$$sent":true}
+         |         }
+         |       }
+         |  }, "c1"]]
+         |}""".stripMargin
+
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(requestBob)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .isEqualTo(s"""{
+                   |  "sessionState": "${SESSION_STATE.value}",
+                   |  "methodResponses": [
+                   |    [
+                   |      "EmailSubmission/set",
+                   |      {
+                   |        "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+                   |        "newState": "2c9f1b12-b35a-43e6-9af2-0106fb53a943",
+                   |        "notCreated": {
+                   |          "k1490": {
+                   |            "type": "invalidArguments",
+                   |            "description": "Some unknown properties were specified",
+                   |            "properties": [
+                   |              "extra"
+                   |            ]
+                   |          }
+                   |        }
+                   |      },
+                   |      "c1"
+                   |    ]
+                   |  ]
+                   |}""".stripMargin)
+  }
+
+  @Test
+  def onSuccessDestroyEmailShouldNotInvokedWhenEmailSubmissionNotCreated(): Unit = {
+    val requestBob =
+      s"""{
+         |  "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
+         |  "methodCalls": [
+         |     ["EmailSubmission/set", {
+         |       "accountId": "$ACCOUNT_ID",
+         |       "create": {
+         |         "k1490": {
+         |           "emailId": "${randomMessageId.serialize}",
+         |           "extra": true,
+         |           "envelope": {
+         |             "mailFrom": {"email": "${BOB.asString}"},
+         |             "rcptTo": [{"email": "${ANDRE.asString}"}]
+         |           }
+         |         }
+         |    },
+         |    "onSuccessDestroyEmail": ["#k1490"]
+         |  }, "c1"]]
+         |}""".stripMargin
+
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(requestBob)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .isEqualTo(s"""{
+                    |  "sessionState": "${SESSION_STATE.value}",
+                    |  "methodResponses": [
+                    |    [
+                    |      "EmailSubmission/set",
+                    |      {
+                    |        "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+                    |        "newState": "2c9f1b12-b35a-43e6-9af2-0106fb53a943",
+                    |        "notCreated": {
+                    |          "k1490": {
+                    |            "type": "invalidArguments",
+                    |            "description": "Some unknown properties were specified",
+                    |            "properties": [
+                    |              "extra"
+                    |            ]
+                    |          }
+                    |        }
+                    |      },
+                    |      "c1"
+                    |    ]
+                    |  ]
+                    |}""".stripMargin)
   }
 }

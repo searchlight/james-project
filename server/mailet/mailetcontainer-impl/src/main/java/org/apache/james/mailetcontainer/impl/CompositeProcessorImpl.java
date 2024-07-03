@@ -19,8 +19,8 @@
 
 package org.apache.james.mailetcontainer.impl;
 
-import javax.annotation.PostConstruct;
-import javax.inject.Inject;
+import jakarta.annotation.PostConstruct;
+import jakarta.inject.Inject;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.tree.ImmutableNode;
@@ -47,7 +47,7 @@ public class CompositeProcessorImpl extends AbstractStateCompositeProcessor {
     private final MailetLoader mailetLoader;
 
     @Inject
-    CompositeProcessorImpl(MetricFactory metricFactory, MailetContext mailetContext, MatcherLoader matcherLoader, MailetLoader mailetLoader) {
+    public CompositeProcessorImpl(MetricFactory metricFactory, MailetContext mailetContext, MatcherLoader matcherLoader, MailetLoader mailetLoader) {
         this.metricFactory = metricFactory;
         this.mailetContext = mailetContext;
         this.matcherLoader = matcherLoader;

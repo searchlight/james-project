@@ -270,7 +270,7 @@ trait EmailParseMethodContract {
            |                        "references": null,
            |                        "bodyValues": {
            |                            "2": {
-           |                                "value": "test body\\n",
+           |                                "value": "test body\\r\\n",
            |                                "isEncodingProblem": false,
            |                                "isTruncated": false
            |                            }
@@ -327,7 +327,7 @@ trait EmailParseMethodContract {
            |                            }
            |                        ],
            |                        "subject": "test subject",
-           |                        "size": 807,
+           |                        "size": 797,
            |                        "blobId": "${messageId.serialize()}_3",
            |                        "preview": "test body",
            |                        "messageId": [

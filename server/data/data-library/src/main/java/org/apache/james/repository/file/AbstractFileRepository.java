@@ -30,8 +30,8 @@ import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.stream.Stream;
 
-import javax.annotation.PostConstruct;
-import javax.inject.Inject;
+import jakarta.annotation.PostConstruct;
+import jakarta.inject.Inject;
 
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.ex.ConfigurationException;
@@ -148,7 +148,7 @@ public abstract class AbstractFileRepository implements Configurable {
         try {
             baseDirectory = fileSystem.getFileWithinBaseDir(destination);
         } catch (IOException e) {
-            throw new ConfigurationException("Unable to acces destination " + destination, e);
+            throw new ConfigurationException("Unable to access destination " + destination, e);
         }
 
     }

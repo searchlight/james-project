@@ -34,6 +34,7 @@ import org.apache.james.mailbox.model.AttachmentMetadata;
 import org.apache.james.mailbox.model.MessageAttachmentMetadata;
 import org.apache.james.mailbox.model.MessageId;
 import org.apache.james.mailbox.model.ParsedAttachment;
+import org.apache.james.mailbox.model.StringBackedAttachmentId;
 import org.apache.james.mailbox.store.mail.AttachmentMapper;
 
 import com.github.fge.lambdas.Throwing;
@@ -88,18 +89,20 @@ public class InMemoryAttachmentMapper implements AttachmentMapper {
     }
 
     private MessageAttachmentMetadata storeAttachmentForMessage(MessageId ownerMessageId, ParsedAttachment parsedAttachment) throws MailboxException {
-        AttachmentId attachmentId = AttachmentId.random();
+        AttachmentId attachmentId = StringBackedAttachmentId.random();
         try {
-            byte[] bytes = IOUtils.toByteArray(parsedAttachment.getContent().openStream());
-            attachmentsById.put(attachmentId, AttachmentMetadata.builder()
-                .attachmentId(attachmentId)
-                .messageId(ownerMessageId)
-                .type(parsedAttachment.getContentType())
-                .size(bytes.length)
-                .build());
-            attachmentsRawContentById.put(attachmentId, bytes);
-            messageIdsByAttachmentId.put(attachmentId, ownerMessageId);
-            return parsedAttachment.asMessageAttachment(attachmentId, bytes.length, ownerMessageId);
+            try (InputStream stream = parsedAttachment.getContent().openStream()) {
+                byte[] bytes = IOUtils.toByteArray(stream);
+                attachmentsById.put(attachmentId, AttachmentMetadata.builder()
+                    .attachmentId(attachmentId)
+                    .messageId(ownerMessageId)
+                    .type(parsedAttachment.getContentType())
+                    .size(bytes.length)
+                    .build());
+                attachmentsRawContentById.put(attachmentId, bytes);
+                messageIdsByAttachmentId.put(attachmentId, ownerMessageId);
+                return parsedAttachment.asMessageAttachment(attachmentId, bytes.length, ownerMessageId);
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

@@ -28,25 +28,25 @@ import java.util.concurrent.TimeUnit
 import io.netty.handler.codec.http.HttpHeaderNames.ACCEPT
 import io.restassured.RestAssured.{`given`, requestSpecification}
 import io.restassured.http.ContentType.JSON
-import javax.mail.Flags
+import jakarta.mail.Flags
 import net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson
 import net.javacrumbs.jsonunit.core.Option
 import net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER
 import net.javacrumbs.jsonunit.core.internal.Options
 import org.apache.http.HttpStatus.SC_OK
 import org.apache.james.GuiceJamesServer
+import org.apache.james.jmap.JmapGuiceProbe
 import org.apache.james.jmap.api.change.State
 import org.apache.james.jmap.api.model.AccountId
 import org.apache.james.jmap.core.ResponseObject.SESSION_STATE
 import org.apache.james.jmap.core.UuidState.INSTANCE
-import org.apache.james.jmap.draft.JmapGuiceProbe
 import org.apache.james.jmap.http.UserCredential
 import org.apache.james.jmap.rfc8621.contract.EmailGetMethodContract.createTestMessage
 import org.apache.james.jmap.rfc8621.contract.Fixture.{ACCEPT_RFC8621_VERSION_HEADER, ALICE, ANDRE, ANDRE_ACCOUNT_ID, ANDRE_PASSWORD, BOB, BOB_PASSWORD, DOMAIN, authScheme, baseRequestSpecBuilder}
 import org.apache.james.jmap.rfc8621.contract.probe.DelegationProbe
 import org.apache.james.mailbox.MessageManager.AppendCommand
 import org.apache.james.mailbox.model.MailboxACL.Right
-import org.apache.james.mailbox.model.{MailboxACL, MailboxId, MailboxPath, MessageId}
+import org.apache.james.mailbox.model.{ComposedMessageId, MailboxACL, MailboxId, MailboxPath, MessageId}
 import org.apache.james.mime4j.dom.Message
 import org.apache.james.mime4j.message.MultipartBuilder
 import org.apache.james.mime4j.stream.RawField
@@ -56,6 +56,7 @@ import org.apache.james.utils.DataProbeImpl
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility
 import org.junit.jupiter.api.{BeforeEach, Test}
+import play.api.libs.json.Json
 
 object EmailGetMethodContract {
   private def createTestMessage: Message = Message.Builder
@@ -2512,6 +2513,109 @@ trait EmailGetMethodContract {
   }
 
   @Test
+  def shouldInlineMDN(server: GuiceJamesServer): Unit = {
+    val path = MailboxPath.inbox(BOB)
+    val mailboxId = server.getProbe(classOf[MailboxProbeImpl]).createMailbox(path)
+    val messageId: MessageId = server.getProbe(classOf[MailboxProbeImpl])
+      .appendMessage(BOB.asString, path, AppendCommand.builder()
+        .withInternalDate(Date.from(ZonedDateTime.parse("2014-10-30T14:12:00Z").toInstant))
+        .build(ClassLoaderUtils.getSystemResourceAsSharedStream("eml/mdn_simple.eml")))
+      .getMessageId
+
+    val request =
+      s"""{
+         |  "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+         |  "methodCalls": [[
+         |    "Email/get",
+         |    {
+         |      "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+         |      "ids": ["${messageId.serialize}"]
+         |    },
+         |    "c1"]]
+         |}""".stripMargin
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(request)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .whenIgnoringPaths("methodResponses[0][1].state")
+      .inPath("methodResponses[0][1].list[0]")
+      .isEqualTo(
+        s"""{
+           |    "inReplyTo": null,
+           |    "to": [
+           |        {
+           |            "email": "magiclan@linagora.com"
+           |        }
+           |    ],
+           |    "receivedAt": "2014-10-30T14:12:00Z",
+           |    "sentAt": "2021-03-30T03:31:50Z",
+           |    "attachments": [],
+           |    "subject": "Read: test",
+           |    "size": 908,
+           |    "blobId": "${messageId.serialize()}",
+           |    "preview": "This is simple body of human-readable part",
+           |    "references": null,
+           |    "id": "${messageId.serialize()}",
+           |    "htmlBody": [
+           |        {
+           |            "charset": "UTF-8",
+           |            "size": 42,
+           |            "partId": "2",
+           |            "blobId": "${messageId.serialize()}_2",
+           |            "type": "text/plain"
+           |        },
+           |        {
+           |            "charset": "UTF-8",
+           |            "size": 108,
+           |            "partId": "3",
+           |            "blobId": "${messageId.serialize()}_3",
+           |            "type": "message/disposition-notification"
+           |        }
+           |    ],
+           |    "mailboxIds": {
+           |        "${mailboxId.serialize()}": true
+           |    },
+           |    "bodyValues": {},
+           |    "messageId": [
+           |        "Mime4j.f.9089aa43e656a14b.1788130035c@linagora.com"
+           |    ],
+           |    "from": [
+           |        {
+           |            "email": "tungexplorer@linagora.com"
+           |        }
+           |    ],
+           |    "keywords": {},
+           |    "textBody": [
+           |        {
+           |            "charset": "UTF-8",
+           |            "size": 42,
+           |            "partId": "2",
+           |            "blobId": "${messageId.serialize()}_2",
+           |            "type": "text/plain"
+           |        },
+           |        {
+           |            "charset": "UTF-8",
+           |            "size": 108,
+           |            "partId": "3",
+           |            "blobId": "${messageId.serialize()}_3",
+           |            "type": "message/disposition-notification"
+           |        }
+           |    ],
+           |    "threadId": "${messageId.serialize()}",
+           |    "hasAttachment": false
+           |}""".stripMargin)
+  }
+
+  @Test
   def requestingTheSameIdTwiceReturnsItOnce(server: GuiceJamesServer): Unit = {
     val message: Message = Message.Builder
       .of
@@ -3151,6 +3255,67 @@ trait EmailGetMethodContract {
   }
 
   @Test
+  def shouldSupportAttachedMessageWithComplexMultipart(server: GuiceJamesServer): Unit = {
+    val path = MailboxPath.inbox(BOB)
+    server.getProbe(classOf[MailboxProbeImpl]).createMailbox(path)
+    val messageId: MessageId = server.getProbe(classOf[MailboxProbeImpl])
+      .appendMessage(BOB.asString, path, AppendCommand.from(
+          ClassLoaderUtils.getSystemResourceAsSharedStream("eml/nested2.eml")))
+      .getMessageId
+
+    val request =
+      s"""{
+         |  "using": [
+         |    "urn:ietf:params:jmap:core",
+         |    "urn:ietf:params:jmap:mail"],
+         |  "methodCalls": [[
+         |    "Email/get",
+         |    {
+         |      "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+         |      "ids": ["${messageId.serialize}"],
+         |      "properties":["bodyStructure"],
+         |      "bodyProperties":["partId", "blobId", "subParts","size", "type"]
+         |    },
+         |    "c1"]]
+         |}""".stripMargin
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(request)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .whenIgnoringPaths("methodResponses[0][1].state")
+      .inPath("methodResponses[0][1].list[0].bodyStructure")
+      .isEqualTo(
+      s"""{
+         |  "subParts": [
+         |      {
+         |        "size": 0,
+         |        "partId": "2",
+         |        "blobId": "${messageId.serialize()}_2",
+         |        "type": "text/plain"
+         |      },
+         |      {
+         |        "size": 2094,
+         |        "partId": "3",
+         |        "blobId": "${messageId.serialize()}_3",
+         |        "type": "message/rfc822"
+         |      }
+         |    ],
+         |    "size": 2513,
+         |    "partId": "1",
+         |    "type": "multipart/mixed"
+         |  }""".stripMargin)
+  }
+
+  @Test
   def mailboxIdsPropertiesShouldBeReturned(server: GuiceJamesServer): Unit = {
     val path = MailboxPath.inbox(BOB)
     val mailboxId: MailboxId = server.getProbe(classOf[MailboxProbeImpl]).createMailbox(path)
@@ -3666,7 +3831,7 @@ trait EmailGetMethodContract {
          |    "charset": "UTF-8",
          |    "size": 8,
          |    "partId": "1",
-         |    "blobId": "1_1",
+         |    "blobId": "${messageId.serialize}_1",
          |    "type": "text/plain"
          |  }
          |}""".stripMargin)
@@ -3762,7 +3927,7 @@ trait EmailGetMethodContract {
          |                                    "value": "$contentType"
          |                                }
          |                            ],
-         |                            "size": 2287,
+         |                            "size": 1880,
          |                            "type": "multipart/mixed",
          |                            "charset": "us-ascii",
          |                            "subParts": [
@@ -4534,7 +4699,7 @@ trait EmailGetMethodContract {
          |                        ],
          |                        "bodyValues": {
          |                            "2": {
-         |                                "value": "Main test message...\\n",
+         |                                "value": "Main test message...\\r\\n",
          |                                "isEncodingProblem": false,
          |                                "isTruncated": false
          |                            }
@@ -4655,7 +4820,7 @@ trait EmailGetMethodContract {
          |						}
          |					],
          |					"subject": "My subject",
-         |					"size": 970
+         |					"size": 1011
          |				}]
          |			},
          |			"c1"
@@ -4798,7 +4963,7 @@ trait EmailGetMethodContract {
          |						}
          |					],
          |					"subject": "My subject",
-         |					"size": 970
+         |					"size": 1011
          |				}]
          |			},
          |			"c1"
@@ -6601,6 +6766,72 @@ trait EmailGetMethodContract {
   }
 
   @Test
+  def shouldAggregateKeywordsAccrossMailbox(server: GuiceJamesServer): Unit = {
+    val message: Message = createTestMessage
+
+    val flags1: Flags = new Flags(Flags.Flag.ANSWERED)
+    flags1.add(Flags.Flag.FLAGGED)
+    flags1.add("f1")
+    flags1.add("f2")
+
+    val flags2: Flags = new Flags(Flags.Flag.SEEN)
+    flags2.add(Flags.Flag.FLAGGED)
+    flags2.add("f3")
+    flags2.add("f2")
+
+    val path1 = MailboxPath.inbox(BOB)
+    val path2 = MailboxPath.forUser(BOB, "box2")
+    val mailboxProbe = server.getProbe(classOf[MailboxProbeImpl])
+    mailboxProbe.createMailbox(path1)
+    mailboxProbe.createMailbox(path2)
+    val messageId: ComposedMessageId = mailboxProbe.appendMessage(BOB.asString(), path1, AppendCommand.builder()
+      .withFlags(flags1)
+      .build(message))
+    mailboxProbe.copy(BOB, path1, path2, messageId.getUid)
+    mailboxProbe.setFlags(BOB, path1, messageId.getUid, flags2)
+
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(
+        s"""{
+           |  "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+           |  "methodCalls": [[
+           |     "Email/get",
+           |     {
+           |       "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+           |       "ids": ["${messageId.getMessageId.serialize}"],
+           |       "properties": ["keywords"]
+           |     },
+           |     "c1"]]
+           |}""".stripMargin)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .inPath("methodResponses[0][1].list[0]")
+      .isEqualTo(
+        s"""
+           |  {
+           |     "id":"${messageId.getMessageId.serialize}",
+           |     "keywords": {
+           |       "$$flagged": true,
+           |       "f1": true,
+           |       "f2": true,
+           |       "f3": true,
+           |       "$$seen": true,
+           |       "$$answered": true
+           |     }
+           |  }
+      """.stripMargin)
+  }
+
+  @Test
   def emailGetShouldReturnSpecificHeadersAsRaw(server: GuiceJamesServer): Unit = {
     val bobPath = MailboxPath.inbox(BOB)
     server.getProbe(classOf[MailboxProbeImpl]).createMailbox(bobPath)
@@ -7875,6 +8106,120 @@ trait EmailGetMethodContract {
       s"""{
          |	"type": "accountNotFound"
          |}""".stripMargin)
+  }
+
+  @Test
+  def shouldFailWhenReadFullLevelAndIdsSizeTooLarge(server: GuiceJamesServer): Unit = {
+    val message: Message = Message.Builder
+      .of
+      .setSubject("test")
+      .setBody("testmail", StandardCharsets.UTF_8)
+      .build
+    server.getProbe(classOf[MailboxProbeImpl]).createMailbox(MailboxPath.inbox(BOB))
+
+    val messagesList = List.range(0, 100)
+      .map(_ => {
+        server.getProbe(classOf[MailboxProbeImpl])
+          .appendMessage(BOB.asString, MailboxPath.inbox(BOB), AppendCommand.from(message))
+          .getMessageId
+          .serialize()
+      }).toArray
+
+    val messageIdsJson: String = Json.stringify(Json.arr(messagesList)).replace("[[", "[").replace("]]", "]");
+
+    val request =
+      s"""{
+         |  "using": [
+         |    "urn:ietf:params:jmap:core",
+         |    "urn:ietf:params:jmap:mail"],
+         |  "methodCalls": [[
+         |    "Email/get",
+         |    {
+         |      "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+         |      "ids": $messageIdsJson,
+         |      "properties": ["id", "size", "bodyStructure", "textBody", "htmlBody", "bodyValues"]
+         |    },
+         |    "c1"]]
+         |}""".stripMargin
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(request)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .isEqualTo(
+        s"""{
+           |  "sessionState": "${SESSION_STATE.value}",
+           |  "methodResponses": [[
+           |    "error",
+           |    {
+           |          "type": "requestTooLarge",
+           |          "description": "Too many items in an email read at level FULL. Got 100 items instead of maximum 5."
+           |    },
+           |    "c1"]]
+           |}""".stripMargin)
+  }
+
+  @Test
+  def getEmailShouldSucceedWhenNotReadFullLevelAndExceedIdsSize(server: GuiceJamesServer): Unit = {
+    val message: Message = Message.Builder
+      .of
+      .setSubject("test")
+      .setBody("testmail", StandardCharsets.UTF_8)
+      .build
+    server.getProbe(classOf[MailboxProbeImpl]).createMailbox(MailboxPath.inbox(BOB))
+
+    val messagesList = List.range(0, 100)
+      .map(_ => {
+        server.getProbe(classOf[MailboxProbeImpl])
+          .appendMessage(BOB.asString, MailboxPath.inbox(BOB), AppendCommand.from(message))
+          .getMessageId
+          .serialize()
+      }).toArray
+
+    val messageIdsJson: String = Json.stringify(Json.arr(messagesList)).replace("[[", "[").replace("]]", "]");
+
+    val request =
+      s"""{
+         |  "using": [
+         |    "urn:ietf:params:jmap:core",
+         |    "urn:ietf:params:jmap:mail"],
+         |  "methodCalls": [[
+         |    "Email/get",
+         |    {
+         |      "accountId": "29883977c13473ae7cb7678ef767cbfbaffc8a44a6e463d971d23a65c1dc4af6",
+         |      "ids": $messageIdsJson,
+         |      "properties": ["id", "size"]
+         |    },
+         |    "c1"]]
+         |}""".stripMargin
+    val response = `given`
+      .header(ACCEPT.toString, ACCEPT_RFC8621_VERSION_HEADER)
+      .body(request)
+    .when
+      .post
+    .`then`
+      .statusCode(SC_OK)
+      .contentType(JSON)
+      .extract
+      .body
+      .asString
+
+    assertThatJson(response)
+      .isEqualTo(
+        s"""{
+           |  "sessionState": "${SESSION_STATE.value}",
+           |  "methodResponses": [[
+           |    "Email/get", "$${json-unit.ignore}",
+           |    "c1"]]
+           |}""".stripMargin)
   }
 
   private def waitForNextState(server: GuiceJamesServer, accountId: AccountId, initialState: State): State = {

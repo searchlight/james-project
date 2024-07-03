@@ -36,7 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -636,6 +636,8 @@ public abstract class ImapRequestLineReader {
                         }
                     }
                 }
+            } catch (DecodingException e) {
+                throw e;
             } catch (IOException e) {
                 throw new DecodingException(HumanReadableText.SOCKET_IO_FAILURE, "Could not read literal", e);
             }

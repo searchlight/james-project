@@ -27,7 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.blob.api.BlobStore;
 import org.apache.james.blob.api.BucketName;
@@ -81,7 +81,7 @@ public class CassandraUploadRepository implements UploadRepository {
     }
 
     @Override
-    public Mono<Void> delete(UploadId id, Username user) {
+    public Mono<Boolean> delete(UploadId id, Username user) {
         return uploadDAO.delete(user, id);
     }
 

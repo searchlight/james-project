@@ -21,7 +21,7 @@ package org.apache.james.webadmin.routes;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.task.TaskManager;
@@ -73,7 +73,7 @@ public class DeleteUserDataRoutes implements Routes {
             .register(DELETE_USER_DATA, request -> {
                 Username username = Username.of(request.params(USER_PATH_PARAM));
 
-                Preconditions.checkArgument(usersRepository.contains(username), "'username' parameter should be an existing user");
+                Preconditions.checkArgument(request.queryParams("force") != null || usersRepository.contains(username), "'username' parameter should be an existing user");
 
                 Optional<StepName> fromStep = Optional.ofNullable(request.queryParams("fromStep")).map(StepName::new);
 

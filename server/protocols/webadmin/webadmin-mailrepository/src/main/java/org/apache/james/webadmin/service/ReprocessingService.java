@@ -19,16 +19,19 @@
 
 package org.apache.james.webadmin.service;
 
+import static org.apache.mailet.LoopPrevention.RECORDED_RECIPIENTS_ATTRIBUTE_NAME;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-import javax.inject.Inject;
-import javax.mail.MessagingException;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
+import org.apache.james.core.MailAddress;
 import org.apache.james.lifecycle.api.LifecycleUtil;
 import org.apache.james.mailrepository.api.MailKey;
 import org.apache.james.mailrepository.api.MailRepository;
@@ -67,15 +70,25 @@ public class ReprocessingService {
         private final MailQueueName mailQueueName;
         private final Optional<String> targetProcessor;
         private final Optional<Integer> maxRetries;
+        private final Optional<MailAddress> forRecipient;
         private final boolean consume;
         private final Limit limit;
 
-        public Configuration(MailQueueName mailQueueName, Optional<String> targetProcessor, Optional<Integer> maxRetries, boolean consume, Limit limit) {
+        public Configuration(MailQueueName mailQueueName, Optional<String> targetProcessor, Optional<Integer> maxRetries, Optional<MailAddress> forRecipient, boolean consume, Limit limit) {
             this.mailQueueName = mailQueueName;
             this.targetProcessor = targetProcessor;
             this.maxRetries = maxRetries;
+            this.forRecipient = forRecipient;
             this.consume = consume;
             this.limit = limit;
+        }
+
+        public Configuration(MailQueueName mailQueueName, Optional<String> targetProcessor, Optional<Integer> maxRetries, boolean consume, Limit limit) {
+            this(mailQueueName, targetProcessor, maxRetries, Optional.empty(), consume, limit);
+        }
+
+        public Optional<MailAddress> getForRecipient() {
+            return forRecipient;
         }
 
         public MailQueueName getMailQueueName() {
@@ -112,6 +125,7 @@ public class ReprocessingService {
             try {
                 incrementRetries(mail);
                 configuration.getTargetProcessor().ifPresent(mail::setState);
+                mail.removeAttribute(RECORDED_RECIPIENTS_ATTRIBUTE_NAME);
                 mailQueue.enQueue(mail);
                 if (configuration.isConsume()) {
                     repository.remove(key);
@@ -175,9 +189,14 @@ public class ReprocessingService {
                 .doOnNext(keyListener)
                 .flatMap(mailKey -> Mono.fromCallable(() -> repository.retrieve(mailKey))
                     .map(mail -> Triple.of(mail, repository, mailKey)))
-                .filter(triple -> !reprocessor.retryExceeded(triple.getLeft())))))
+                .filter(triple -> !reprocessor.retryExceeded(triple.getLeft()))))
+                .filter(triple -> filterRecipients(configuration, triple)))
             .flatMap(triple -> reprocess(triple.getRight(), triple.getLeft(), triple.getMiddle(), reprocessor))
             .reduce(Task.Result.COMPLETED, Task::combine);
+    }
+
+    private static Boolean filterRecipients(Configuration configuration, Triple<Mail, MailRepository, MailKey> triple) {
+        return configuration.forRecipient.map(rcpt -> triple.getLeft().getRecipients().contains(rcpt)).orElse(true);
     }
 
     private Mono<Task.Result> reprocess(MailKey key, Mail mail, MailRepository repository, Reprocessor reprocessor) {

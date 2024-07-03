@@ -27,18 +27,18 @@ import cats.implicits.toTraverseOps
 import com.google.common.collect.ImmutableMap
 import eu.timepit.refined.auto._
 import eu.timepit.refined.refineV
-import javax.annotation.PreDestroy
-import javax.inject.Inject
-import javax.mail.Address
-import javax.mail.Message.RecipientType
-import javax.mail.internet.{InternetAddress, MimeMessage}
+import jakarta.annotation.PreDestroy
+import jakarta.inject.Inject
+import jakarta.mail.Address
+import jakarta.mail.Message.RecipientType
+import jakarta.mail.internet.{InternetAddress, MimeMessage}
 import org.apache.commons.lang3.StringUtils
 import org.apache.james.core.{MailAddress, Username}
 import org.apache.james.jmap.core.CapabilityIdentifier.{CapabilityIdentifier, EMAIL_SUBMISSION, JMAP_CORE}
 import org.apache.james.jmap.core.Id.{Id, IdConstraint}
 import org.apache.james.jmap.core.Invocation.{Arguments, MethodName}
 import org.apache.james.jmap.core.SetError.{SetErrorDescription, SetErrorType}
-import org.apache.james.jmap.core.{ClientId, Invocation, Properties, ServerId, SessionTranslator, SetError, SubmissionCapabilityFactory, UTCDate, UuidState}
+import org.apache.james.jmap.core.{ClientId, Invocation, JmapRfc8621Configuration, Properties, ServerId, SessionTranslator, SetError, SubmissionCapabilityFactory, UTCDate, UuidState}
 import org.apache.james.jmap.json.EmailSubmissionSetSerializer
 import org.apache.james.jmap.mail.{EmailSubmissionAddress, EmailSubmissionCreationId, EmailSubmissionCreationRequest, EmailSubmissionCreationResponse, EmailSubmissionId, EmailSubmissionSetRequest, EmailSubmissionSetResponse, Envelope, ParameterName, ParameterValue}
 import org.apache.james.jmap.method.EmailSubmissionSetMethod.{CreationFailure, CreationResult, CreationResults, CreationSuccess, LOGGER, MAIL_METADATA_USERNAME_ATTRIBUTE, NO_DELAY, VALID_PARAMETER_NAME_SET, formatter}
@@ -82,21 +82,35 @@ object EmailSubmissionSetMethod {
                              messageId: MessageId) extends CreationResult
   case class CreationFailure(emailSubmissionCreationId: EmailSubmissionCreationId, exception: Throwable) extends CreationResult {
     def asSetError: SetError = exception match {
-      case e: EmailSubmissionCreationParseException => e.setError
-      case _: NoRecipientException => SetError(EmailSubmissionSetMethod.noRecipients,
-        SetErrorDescription("Attempt to send a mail with no recipients"), None)
-      case e: ForbiddenMailFromException => SetError(EmailSubmissionSetMethod.forbiddenMailFrom,
-        SetErrorDescription(s"Attempt to send a mail whose MimeMessage From and Sender fields not allowed for connected user: ${e.from}"), None)
-      case e: ForbiddenFromException => SetError(EmailSubmissionSetMethod.forbiddenFrom,
-        SetErrorDescription(s"Attempt to send a mail whose envelope From not allowed for connected user: ${e.from}"),
-        Some(Properties("envelope.mailFrom")))
-      case _: MessageNotFoundException => SetError(SetError.invalidArgumentValue,
-        SetErrorDescription("The email to be sent cannot be found"),
-        Some(Properties("emailId")))
-      case e: DateTimeParseException => SetError.invalidArguments(SetErrorDescription(e.getMessage))
-      case e: IllegalArgumentException => SetError.invalidArguments(SetErrorDescription(e.getMessage))
+      case e: EmailSubmissionCreationParseException =>
+        LOGGER.info("Failed to parse EMailSubmission/set create", e)
+        e.setError
+      case _: NoRecipientException =>
+        LOGGER.info("Attempt to send a mail with no recipients")
+        SetError(EmailSubmissionSetMethod.noRecipients,
+          SetErrorDescription("Attempt to send a mail with no recipients"), None)
+      case e: ForbiddenMailFromException =>
+        LOGGER.warn(s"Attempt to send a mail whose MimeMessage From and Sender fields not allowed for connected user: ${e.from}")
+        SetError(EmailSubmissionSetMethod.forbiddenMailFrom,
+          SetErrorDescription(s"Attempt to send a mail whose MimeMessage From and Sender fields not allowed for connected user: ${e.from}"), None)
+      case e: ForbiddenFromException =>
+        LOGGER.warn(s"Attempt to send a mail whose envelope From not allowed for connected user: ${e.from}")
+        SetError(EmailSubmissionSetMethod.forbiddenFrom,
+          SetErrorDescription(s"Attempt to send a mail whose envelope From not allowed for connected user: ${e.from}"),
+          Some(Properties("envelope.mailFrom")))
+      case _: MessageNotFoundException =>
+        LOGGER.info(" EmailSubmission/set failed as the underlying email could not be found")
+        SetError(SetError.invalidArgumentValue,
+          SetErrorDescription("The email to be sent cannot be found"),
+          Some(Properties("emailId")))
+      case e: DateTimeParseException =>
+        LOGGER.info("Failed to parse date time", e)
+        SetError.invalidArguments(SetErrorDescription(e.getMessage))
+      case e: IllegalArgumentException =>
+        LOGGER.info("Illegal argument in EmailSubmission/set", e)
+        SetError.invalidArguments(SetErrorDescription(e.getMessage))
       case e: Exception =>
-        e.printStackTrace()
+        LOGGER.error("Failed to send an email with EmailSubmission/set", e)
         SetError.serverFail(SetErrorDescription(exception.getMessage))
     }
   }
@@ -109,7 +123,6 @@ object EmailSubmissionSetMethod {
       .toMap
       .map(creation => (creation._1, creation._2))
 
-
     def retrieveErrors: Map[EmailSubmissionCreationId, SetError] = created
       .flatMap {
         case failure: CreationFailure => Some(failure.emailSubmissionCreationId, failure.asSetError)
@@ -117,28 +130,26 @@ object EmailSubmissionSetMethod {
       }
       .toMap
 
-    def resolveMessageId(creationId: EmailSubmissionCreationId): Either[IllegalArgumentException, MessageId] = {
+    def resolveMessageId(creationId: EmailSubmissionCreationId): Either[IllegalArgumentException, Option[MessageId]] = {
       if (creationId.id.startsWith("#")) {
         val realId = creationId.id.substring(1)
         val validatedId: Either[String, Id] = refineV[IdConstraint](realId)
-        validatedId
+
+       validatedId
           .left.map(s => new IllegalArgumentException(s))
-          .flatMap(id => retrieveMessageId(EmailSubmissionCreationId(id))
+          .flatMap(id => retrieveCreationResult(EmailSubmissionCreationId(id))
             .map(scala.Right(_))
-            .getOrElse(Left(new IllegalArgumentException(s"$creationId cannot be referenced in current method call"))))
+            .getOrElse(Left(new IllegalArgumentException(s"${creationId.id} cannot be referenced in current method call"))))
+          .map {
+            case (success: CreationSuccess) => Some(success.messageId)
+            case (_: CreationFailure) => None
+          }
       } else {
-        Left(new IllegalArgumentException(s"$creationId cannot be retrieved as storage for EmailSubmission is not yet implemented"))
+        Left(new IllegalArgumentException(s"${creationId.id} cannot be retrieved as storage for EmailSubmission is not yet implemented"))
       }
     }
-
-    private def retrieveMessageId(creationId: EmailSubmissionCreationId): Option[MessageId] =
-      created.flatMap {
-        case success: CreationSuccess => Some(success)
-        case _: CreationFailure => None
-      }.filter(_.emailSubmissionCreationId.equals(creationId))
-        .map(_.messageId)
-        .toList
-        .headOption
+    private def retrieveCreationResult(creationId: EmailSubmissionCreationId): Option[CreationResult] =
+      created.find(_.emailSubmissionCreationId.equals(creationId))
   }
 }
 
@@ -156,6 +167,7 @@ case class MessageMimeMessageSource(id: String, message: MessageResult) extends 
 }
 
 class EmailSubmissionSetMethod @Inject()(serializer: EmailSubmissionSetSerializer,
+                                         configuration: JmapRfc8621Configuration,
                                          messageIdManager: MessageIdManager,
                                          mailQueueFactory: MailQueueFactory[_ <: MailQueue],
                                          canSendFrom: CanSendFrom,
@@ -200,10 +212,10 @@ class EmailSubmissionSetMethod @Inject()(serializer: EmailSubmissionSetSerialize
         SFlux.concat(SMono.just(explicitInvocation), emailSetCall)
       })
 
-  override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[IllegalArgumentException, EmailSubmissionSetRequest] =
+  override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[Exception, EmailSubmissionSetRequest] =
     serializer.deserializeEmailSubmissionSetRequest(invocation.arguments.value)
       .asEitherRequest
-      .flatMap(_.validate)
+      .flatMap(_.validate(configuration))
 
   private def create(request: EmailSubmissionSetRequest,
                      session: MailboxSession,
@@ -258,6 +270,7 @@ class EmailSubmissionSetMethod @Inject()(serializer: EmailSubmissionSetSerialize
         .switchIfEmpty(SMono.error(MessageNotFoundException(request.emailId)))
       submissionId = EmailSubmissionId.generate
       message <- SMono.fromTry(toMimeMessage(submissionId.value, message))
+      _ <- validateMimeMessages(message)
       envelope <- SMono.fromTry(resolveEnvelope(message, request.envelope))
       _ <- validate(mailboxSession)(message, envelope)
       _ <- SMono.fromTry(validateFromParameters(envelope.mailFrom.parameters))
@@ -336,6 +349,29 @@ class EmailSubmissionSetMethod @Inject()(serializer: EmailSubmissionSetSerialize
     } else {
       Failure(new IllegalArgumentException("Invalid delayed time!"))
     }
+
+  def validateMimeMessages(mimeMessage: MimeMessage) : SMono[MimeMessage] = validateMailAddressHeaderMimeMessage(mimeMessage)
+  private def validateMailAddressHeaderMimeMessage(mimeMessage: MimeMessage): SMono[MimeMessage] =
+    SFlux.fromIterable(Map("to" -> Option(mimeMessage.getRecipients(RecipientType.TO)).toList.flatten,
+        "cc" -> Option(mimeMessage.getRecipients(RecipientType.CC)).toList.flatten,
+        "bcc" -> Option(mimeMessage.getRecipients(RecipientType.BCC)).toList.flatten,
+        "from" -> Option(mimeMessage.getFrom).toList.flatten,
+        "sender" -> Option(mimeMessage.getSender).toList,
+        "replyTo" -> Option(mimeMessage.getReplyTo).toList.flatten))
+      .doOnNext { case (headerName, addresses) => (headerName, addresses.foreach(address => validateMailAddress(headerName, address))) }
+      .`then`()
+      .`then`(SMono.just(mimeMessage))
+
+  private def validateMailAddress(headName: String, address: Address): MailAddress =
+    Try(new MailAddress(asString(address))) match {
+      case Success(mailAddress) => mailAddress
+      case Failure(_) => throw new IllegalArgumentException(s"Invalid mail address: $address in $headName header")
+    }
+
+  private def asString(address: Address): String = address match {
+    case a: InternetAddress => a.getAddress
+    case _ => address.toString
+  }
 
   def validateRcptTo(recipients: List[EmailSubmissionAddress]): SMono[List[EmailSubmissionAddress]] =
     SFlux.fromIterable(recipients)

@@ -25,7 +25,8 @@ import static spark.Spark.halt;
 import java.util.List;
 import java.util.Optional;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
+import jakarta.mail.internet.AddressException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
@@ -45,6 +46,9 @@ import org.apache.james.webadmin.utils.ErrorResponder.ErrorType;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
@@ -60,6 +64,8 @@ public class GroupsRoutes implements Routes {
 
     private static final String GROUP_ADDRESS = "groupAddress";
     private static final String GROUP_ADDRESS_PATH = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS;
+
+    private static final String GROUP_MULTIPLE_PATH = "address/groups";
     private static final String USER_ADDRESS = "userAddress";
     private static final String USER_IN_GROUP_ADDRESS_PATH = GROUP_ADDRESS_PATH + SEPARATOR + ":" + USER_ADDRESS;
     private static final String GROUP_ADDRESS_TYPE = "group";
@@ -68,9 +74,13 @@ public class GroupsRoutes implements Routes {
     private final JsonTransformer jsonTransformer;
     private final RecipientRewriteTable recipientRewriteTable;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final MailAddress dummyUser = new MailAddress("fc8f9dc08044a0c0ff9528fe997","fc8f9dc08044a0c0a8c23c68");
+
     @Inject
     @VisibleForTesting
-    GroupsRoutes(RecipientRewriteTable recipientRewriteTable, JsonTransformer jsonTransformer) {
+    GroupsRoutes(RecipientRewriteTable recipientRewriteTable, JsonTransformer jsonTransformer) throws AddressException {
         this.jsonTransformer = jsonTransformer;
         this.recipientRewriteTable = recipientRewriteTable;
     }
@@ -85,13 +95,25 @@ public class GroupsRoutes implements Routes {
         service.get(ROOT_PATH, this::listGroups, jsonTransformer);
         service.get(GROUP_ADDRESS_PATH, this::listGroupMembers, jsonTransformer);
         service.put(GROUP_ADDRESS_PATH, (request, response) -> halt(HttpStatus.BAD_REQUEST_400));
+        service.post(GROUP_ADDRESS_PATH, this::createGroupWithDummyUser);
         service.put(USER_IN_GROUP_ADDRESS_PATH, this::addToGroup);
-        service.delete(GROUP_ADDRESS_PATH, (request, response) -> halt(HttpStatus.BAD_REQUEST_400));
+        //service.delete(GROUP_ADDRESS_PATH, (request, response) -> halt(HttpStatus.BAD_REQUEST_400));
         service.delete(USER_IN_GROUP_ADDRESS_PATH, this::removeFromGroup);
+        service.delete(GROUP_MULTIPLE_PATH, this::removeMultipleGroup);
+        service.delete(GROUP_ADDRESS_PATH, this::removeGroup);
     }
 
     public List<MappingSource> listGroups(Request request, Response response) throws RecipientRewriteTableException {
+        System.out.println(request.toString());
         return recipientRewriteTable.getSourcesForType(Mapping.Type.Group).collect(ImmutableList.toImmutableList());
+    }
+
+    public HaltException createGroupWithDummyUser(Request request, Response response) {
+        MailAddress groupAddress = MailAddressParser.parseMailAddress(request.params(GROUP_ADDRESS), GROUP_ADDRESS_TYPE);
+        Domain domain = groupAddress.getDomain();
+        MappingSource source = MappingSource.fromUser(Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), domain));
+        addGroupMember(source, dummyUser);
+        return halt(HttpStatus.NO_CONTENT_204);
     }
 
     public HaltException addToGroup(Request request, Response response) {
@@ -129,6 +151,81 @@ public class GroupsRoutes implements Routes {
         }
     }
 
+    public HaltException removeMultipleGroup(Request request, Response response) throws RecipientRewriteTableException, JsonProcessingException {
+        String jsonString = request.body();
+        List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
+
+        //checking is this group correct or not. If not through an exception
+        for (int i = 0; i < groups.size(); i++) {
+            String group = groups.get(i);//todo
+            MailAddress groupAddress;
+            try {
+                groupAddress = new MailAddress(group);
+            } catch (AddressException e) {
+                throw new RuntimeException(e);
+            }
+            Mappings mappings = recipientRewriteTable.getStoredMappings(MappingSource.fromMailAddress(groupAddress))
+                    .select(Mapping.Type.Group);
+
+            ensureNonEmptyMappings(mappings, group);
+        }
+        // Iterate through the array and print each element
+        for (int i = 0; i < groups.size(); i++) {
+            String group = groups.get(i);//todo
+            // Have to check is this group correct or not
+            MailAddress groupAddress;
+            try {
+                groupAddress = new MailAddress(group);
+            } catch (AddressException e) {
+                throw new RuntimeException(e);
+            }
+
+            Mappings mappings = recipientRewriteTable.getStoredMappings(MappingSource.fromMailAddress(groupAddress))
+                    .select(Mapping.Type.Group);
+
+            ensureNonEmptyMappings(mappings, group);
+
+            var list = mappings
+                    .asStream()
+                    .map(Mapping::asMailAddress)
+                    .flatMap(Optional::stream)
+                    .map(MailAddress::asString)
+                    .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
+
+            for (var userAddress : list) {
+                MappingSource source = MappingSource
+                        .fromUser(
+                                Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), groupAddress.getDomain()));
+                recipientRewriteTable.removeGroupMapping(source, userAddress.toString());
+            }
+        }
+        return halt(HttpStatus.NO_CONTENT_204);
+    }
+
+
+    public HaltException removeGroup(Request request, Response response) throws RecipientRewriteTableException {
+        MailAddress groupAddress = MailAddressParser.parseMailAddress(request.params(GROUP_ADDRESS), GROUP_ADDRESS_TYPE);
+        Mappings mappings = recipientRewriteTable.getStoredMappings(MappingSource.fromMailAddress(groupAddress))
+                .select(Mapping.Type.Group);
+
+        ensureNonEmptyMappings(mappings, groupAddress.toString());
+
+        var list = mappings
+                .asStream()
+                .map(Mapping::asMailAddress)
+                .flatMap(Optional::stream)
+                .map(MailAddress::asString)
+                .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
+
+        for (var userAddress : list) {
+            MappingSource source = MappingSource
+                    .fromUser(
+                            Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), groupAddress.getDomain()));
+            recipientRewriteTable.removeGroupMapping(source, userAddress.toString());
+        }
+        return halt(HttpStatus.NO_CONTENT_204);
+    }
+
     public HaltException removeFromGroup(Request request, Response response) throws RecipientRewriteTableException {
         MailAddress groupAddress = MailAddressParser.parseMailAddress(request.params(GROUP_ADDRESS), GROUP_ADDRESS_TYPE);
         MailAddress userAddress = MailAddressParser.parseMailAddress(request.params(USER_ADDRESS), USER_ADDRESS_TYPE);
@@ -144,7 +241,18 @@ public class GroupsRoutes implements Routes {
         Mappings mappings = recipientRewriteTable.getStoredMappings(MappingSource.fromMailAddress(groupAddress))
             .select(Mapping.Type.Group);
 
-        ensureNonEmptyMappings(mappings);
+        ensureNonEmptyMappings(mappings, groupAddress.toString());
+
+        var list = mappings
+                .asStream()
+                .map(Mapping::asMailAddress)
+                .flatMap(Optional::stream)
+                .map(MailAddress::asString)
+                .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
+
+        for (var s : list) {
+            System.out.println(s);
+        }
 
         return mappings
                 .asStream()
@@ -154,12 +262,12 @@ public class GroupsRoutes implements Routes {
                 .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
     }
 
-    private void ensureNonEmptyMappings(Mappings mappings) {
+    private void ensureNonEmptyMappings(Mappings mappings, String group) {
         if (mappings == null || mappings.isEmpty()) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.NOT_FOUND_404)
                 .type(ErrorType.INVALID_ARGUMENT)
-                .message("The group does not exist")
+                .message(group + " does not exist")
                 .haltError();
         }
     }

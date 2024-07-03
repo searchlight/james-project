@@ -25,8 +25,8 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.mail.internet.MimeMessage;
+import jakarta.inject.Inject;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;

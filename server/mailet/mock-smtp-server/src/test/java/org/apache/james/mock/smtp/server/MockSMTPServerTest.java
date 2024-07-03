@@ -37,8 +37,8 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.util.List;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.commons.net.smtp.AuthenticatingSMTPClient;
 import org.apache.commons.net.smtp.SMTPConnectionClosedException;
@@ -127,6 +127,40 @@ class MockSMTPServerTest {
                     Mail.Envelope expectedEnvelope = Mail.Envelope.ofAddresses(
                         new MailAddress(BOB),
                         new MailAddress(ALICE), new MailAddress(JACK));
+                    assertThat(mails)
+                        .hasSize(1)
+                        .allSatisfy(Throwing.consumer(assertedMail -> {
+                            assertThat(assertedMail.getEnvelope()).isEqualTo(expectedEnvelope);
+                            assertThat(assertedMail.getMessage()).contains(MimeMessageUtil.asString(message));
+                        }));
+                });
+        }
+
+        @Test
+        void quotedLocalPartsShouldBeRelayed() throws Exception {
+            SMTPMessageSender sender = new SMTPMessageSender(DOMAIN)
+                .connect("localhost", mockServer.getPort());
+
+            MimeMessage message = MimeMessageBuilder.mimeMessageBuilder()
+                .setSubject("test")
+                .setText("any text")
+                .build();
+
+            FakeMail mail = FakeMail.builder()
+                .name("name")
+                .sender(BOB)
+                .recipients("\"alice@whatever\"@james.org")
+                .mimeMessage(message)
+                .build();
+
+            sender.sendMessage(mail);
+
+            Awaitility.await().atMost(TEN_SECONDS)
+                .untilAsserted(() -> {
+                    List<Mail> mails = mailRepository.list();
+                    Mail.Envelope expectedEnvelope = Mail.Envelope.ofAddresses(
+                        new MailAddress(BOB),
+                        new MailAddress("\"alice@whatever\"@james.org"));
                     assertThat(mails)
                         .hasSize(1)
                         .allSatisfy(Throwing.consumer(assertedMail -> {

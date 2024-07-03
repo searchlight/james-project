@@ -21,16 +21,14 @@ package org.apache.james.jmap.api.identity
 
 import java.nio.charset.StandardCharsets
 import java.util.{Optional, UUID}
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.core.{MailAddress, Username}
 import org.apache.james.jmap.api.model.{EmailAddress, ForbiddenSendFromException, HtmlSignature, Identity, IdentityId, IdentityName, MayDeleteIdentity, TextSignature}
 import org.apache.james.rrt.api.CanSendFrom
 import org.apache.james.user.api.UsersRepository
-import org.apache.james.util.ReactorUtils
 import org.reactivestreams.Publisher
 import reactor.core.scala.publisher.{SFlux, SMono}
 
-import scala.jdk.StreamConverters._
 import scala.util.Try
 import scala.jdk.OptionConverters._
 import scala.jdk.CollectionConverters._
@@ -52,6 +50,23 @@ object IdentityCreationRequest {
       textSignature = textSignature.toScala.map(TextSignature(_)),
       htmlSignature = htmlSignature.toScala.map(HtmlSignature(_)))
   }
+
+  def from(name: Option[IdentityName],
+            email: MailAddress,
+            replyTo: Option[List[EmailAddress]],
+            bcc: Option[List[EmailAddress]],
+            sortOrder: Option[Int] = None,
+            textSignature: Option[TextSignature],
+            htmlSignature: Option[HtmlSignature]): IdentityCreationRequest = {
+    IdentityCreationRequest(
+      name = name,
+      email = email,
+      replyTo = replyTo,
+      bcc = bcc,
+      sortOrder = sortOrder,
+      textSignature = textSignature,
+      htmlSignature = htmlSignature)
+  }
 }
 
 case class IdentityCreationRequest(name: Option[IdentityName],
@@ -60,7 +75,8 @@ case class IdentityCreationRequest(name: Option[IdentityName],
                                    bcc: Option[List[EmailAddress]],
                                    sortOrder: Option[Int] = None,
                                    textSignature: Option[TextSignature],
-                                   htmlSignature: Option[HtmlSignature]) {
+                                   htmlSignature: Option[HtmlSignature],
+                                   mayDeleteIdentity: MayDeleteIdentity = MayDeleteIdentity(true)) {
   def asIdentity(id: IdentityId): Identity = Identity(
     id = id,
     name = name.getOrElse(IdentityName.DEFAULT),
@@ -69,7 +85,7 @@ case class IdentityCreationRequest(name: Option[IdentityName],
     bcc = bcc,
     textSignature = textSignature.getOrElse(TextSignature.DEFAULT),
     htmlSignature = htmlSignature.getOrElse(HtmlSignature.DEFAULT),
-    mayDelete = MayDeleteIdentity(true),
+    mayDelete = mayDeleteIdentity,
     sortOrder = sortOrder.getOrElse(Identity.DEFAULT_SORTORDER))
 }
 
@@ -123,14 +139,15 @@ case class IdentityUpdateRequest(name: Option[IdentityNameUpdate] = None,
       .flatten
       .foldLeft(identity)((acc, update) => update.update(acc))
 
-  def asCreationRequest(email: MailAddress): IdentityCreationRequest =
+  def asCreationRequest(email: MailAddress, mayDelete: Boolean): IdentityCreationRequest =
     IdentityCreationRequest(
       name = name.map(_.name),
       email = email,
       replyTo = replyTo.flatMap(_.replyTo),
       bcc = bcc.flatMap(_.bcc),
       textSignature = textSignature.map(_.textSignature),
-      htmlSignature = htmlSignature.map(_.htmlSignature))
+      htmlSignature = htmlSignature.map(_.htmlSignature),
+      mayDeleteIdentity = MayDeleteIdentity(mayDelete))
 }
 
 trait CustomIdentityDAO {
@@ -146,15 +163,14 @@ trait CustomIdentityDAO {
 
   def upsert(user: Username, patch: Identity): SMono[Unit]
 
-  def delete(username: Username, ids: Seq[IdentityId]): Publisher[Unit]
+  def delete(username: Username, ids: Set[IdentityId]): Publisher[Unit]
 
   def delete(username: Username): Publisher[Unit]
 }
 
 class DefaultIdentitySupplier @Inject()(canSendFrom: CanSendFrom, usersRepository: UsersRepository) {
-  def listIdentities(username: Username): List[Identity] = canSendFrom.allValidFromAddressesForUser(username)
-    .toScala(LazyList).toList
-    .flatMap(address =>
+  def listIdentities(username: Username): Publisher[Identity] = SFlux(canSendFrom.allValidFromAddressesForUser(username))
+    .map(address =>
       from(address).map(id =>
         Identity(
           id = id,
@@ -166,13 +182,11 @@ class DefaultIdentitySupplier @Inject()(canSendFrom: CanSendFrom, usersRepositor
           htmlSignature = HtmlSignature.DEFAULT,
           mayDelete = MayDeleteIdentity(false),
           sortOrder = Identity.DEFAULT_SORTORDER)))
+    .flatMap(option => option.map(SMono.just).getOrElse(SMono.empty))
 
   def userCanSendFrom(username: Username, mailAddress: MailAddress): SMono[Boolean] =
     SMono.fromPublisher(canSendFrom.userCanSendFromReactive(username, usersRepository.getUsername(mailAddress)))
       .map(boolean2Boolean(_))
-
-  def isServerSetIdentity(username: Username, id: IdentityId): Boolean =
-    listIdentities(username).map(_.id).contains(id)
 
   private def from(address: MailAddress): Option[IdentityId] =
     Try(UUID.nameUUIDFromBytes(address.asString().getBytes(StandardCharsets.UTF_8)))
@@ -202,8 +216,8 @@ class IdentityRepository @Inject()(customIdentityDao: CustomIdentityDAO, identit
       .map(_.identity)
 
   private def listServerSetIdentity(user: Username): SMono[(Set[MailAddress], List[Identity])] =
-    SMono.fromCallable(() => identityFactory.listIdentities(user))
-      .subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER)
+    SFlux(identityFactory.listIdentities(user))
+      .collectSeq().map(s => s.toList)
       .map(list => (list.map(_.email).toSet, list))
 
   private def listCustomIdentity(user: Username, availableMailAddresses: Set[MailAddress]): SFlux[Identity] =
@@ -211,9 +225,9 @@ class IdentityRepository @Inject()(customIdentityDao: CustomIdentityDAO, identit
       .filter(identity => availableMailAddresses.contains(identity.email))
 
   def update(user: Username, identityId: IdentityId, identityUpdateRequest: IdentityUpdateRequest): Publisher[Unit] = {
-    val findServerSetIdentity: SMono[Option[Identity]] = SMono.fromCallable(() => identityFactory.listIdentities(user)
-      .find(identity => identity.id.equals(identityId)))
-      .subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER)
+    val findServerSetIdentity: SMono[Option[Identity]] = SFlux(identityFactory.listIdentities(user))
+      .collectSeq().map(s => s.toList)
+      .map(list => list.find(identity => identity.id.equals(identityId)))
     val findCustomIdentity: SMono[Option[Identity]] = SMono(customIdentityDao.findByIdentityId(user, identityId))
       .map(Some(_))
       .switchIfEmpty(SMono.just(None))
@@ -223,7 +237,7 @@ class IdentityRepository @Inject()(customIdentityDao: CustomIdentityDAO, identit
       .flatMap {
         case (None, None) => SMono.error(IdentityNotFoundException(identityId))
         case (Some(_), Some(customIdentity)) => customIdentityDao.upsert(user, identityUpdateRequest.update(customIdentity))
-        case (Some(serverSetIdentity), None) => SMono(customIdentityDao.save(user, identityId, identityUpdateRequest.asCreationRequest(serverSetIdentity.email)))
+        case (Some(serverSetIdentity), None) => SMono(customIdentityDao.save(user, identityId, identityUpdateRequest.asCreationRequest(serverSetIdentity.email, mayDelete = false)))
         case (None, Some(customIdentity)) =>
           identityFactory.userCanSendFrom(user, customIdentity.email)
             .filter(bool => bool)
@@ -233,17 +247,20 @@ class IdentityRepository @Inject()(customIdentityDao: CustomIdentityDAO, identit
       .`then`()
   }
 
-  def delete(username: Username, ids: Seq[IdentityId]): Publisher[Unit] =
-    SMono.just(ids)
-      .handle[Seq[IdentityId]]{
-        case (ids, sink) => if (identityFactory.isServerSetIdentity(username, ids.head)) {
-          sink.error(IdentityForbiddenDeleteException(ids.head))
+  def delete(username: Username, ids: Set[IdentityId]): Publisher[Unit] = {
+    SFlux(identityFactory.listIdentities(username))
+      .map(_.id)
+      .collectSeq()
+      .flatMapMany(serverSetIdentities => SFlux.fromIterable(ids)
+        .handle[IdentityId] {
+        case (id, sink) => if (serverSetIdentities.contains(id)) {
+          sink.error(IdentityForbiddenDeleteException(id))
         } else {
-          sink.next(ids)
+          sink.next(id)
         }
-      }
-      .flatMap(ids => SMono.fromPublisher(customIdentityDao.delete(username, ids)))
-      .subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER)
+      }).collectSeq()
+      .flatMap(ids => SMono.fromPublisher(customIdentityDao.delete(username, ids.toSet)))
+  }
 }
 
 case class IdentityNotFoundException(id: IdentityId) extends RuntimeException(s"$id could not be found")
@@ -259,13 +276,13 @@ object IdentityWithOrigin {
   case class CustomIdentityOrigin(inputIdentity: Identity) extends IdentityWithOrigin {
     override def identity: Identity = inputIdentity
 
-    override def merge(other: IdentityWithOrigin): IdentityWithOrigin = this
+    override def merge(other: IdentityWithOrigin): IdentityWithOrigin = CustomIdentityOrigin(identity.copy(mayDelete = MayDeleteIdentity(false)))
   }
 
   case class ServerSetIdentityOrigin(inputIdentity: Identity) extends IdentityWithOrigin {
     override def identity: Identity = inputIdentity
 
-    override def merge(other: IdentityWithOrigin): IdentityWithOrigin = other
+    override def merge(other: IdentityWithOrigin): IdentityWithOrigin = CustomIdentityOrigin(other.identity.copy(mayDelete = MayDeleteIdentity(false)))
   }
 
   def fromCustom(identity: Identity): IdentityWithOrigin = CustomIdentityOrigin(identity)

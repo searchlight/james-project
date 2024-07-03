@@ -344,6 +344,11 @@
             <artifactId>apache-james-backends-rabbitmq</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>apache-james-backends-redis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!--        7. james-core-->
         <dependency>
@@ -877,28 +882,6 @@
             <artifactId>james-server-jmap</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>${james.groupId}</groupId>
-            <artifactId>james-server-jmap-draft</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <!--        jmap-draft-integration-testing module-->
-        <dependency>
-            <groupId>${james.groupId}</groupId>
-            <artifactId>james-server-jmap-draft-integration-testing</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>${james.groupId}</groupId>
-            <artifactId>memory-jmap-draft-integration-testing</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>${james.groupId}</groupId>
-            <artifactId>rabbitmq-jmap-draft-integration-testing</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <!--        end of jmap-draft-integration-testing module-->
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-server-jmap-rfc-8621</artifactId>

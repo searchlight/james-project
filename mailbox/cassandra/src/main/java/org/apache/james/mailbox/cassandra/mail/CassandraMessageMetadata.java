@@ -25,7 +25,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.blob.api.BlobId;
 import org.apache.james.mailbox.MessageUid;
@@ -266,6 +266,16 @@ public class CassandraMessageMetadata {
         @Override
         public InputStream getFullContent() throws IOException {
             return delegate.getFullContent();
+        }
+
+        @Override
+        public Optional<byte[][]> getFullBytes() {
+            return delegate.getFullBytes();
+        }
+
+        @Override
+        public Optional<byte[][]> getHeadersBytes() {
+            return delegate.getHeadersBytes();
         }
 
         @Override

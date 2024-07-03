@@ -21,9 +21,9 @@ package org.apache.james.transport.mailets;
 
 import java.util.Collection;
 
-import javax.inject.Inject;
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.dnsservice.api.DNSService;
 import org.apache.james.dnsservice.library.netmatcher.NetMatcher;
@@ -79,7 +79,7 @@ public class SPF extends GenericMailet {
     private org.apache.james.jspf.impl.SPF spf;
     public static final AttributeName EXPLANATION_ATTRIBUTE = AttributeName.of("org.apache.james.transport.mailets.spf.explanation");
     public static final AttributeName RESULT_ATTRIBUTE = AttributeName.of("org.apache.james.transport.mailets.spf.result");
-    private static final String privateNetworks = "127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/16, 172.17.0.0/16, 172.18.0.0/16, 172.19.0.0/16, 172.20.0.0/16, 172.21.0.0/16, 172.22.0.0/16, 172.23.0.0/16, 172.24.0.0/16, 172.25.0.0/16, 172.26.0.0/16, 172.27.0.0/16, 172.28.0.0/16, 172.29.0.0/16, 172.30.0.0/16, 172.31.0.0/16";
+    private static final String privateNetworks = "127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16";
 
     private final DNSService dnsService;
     private NetMatcher netMatcher;
@@ -106,7 +106,7 @@ public class SPF extends GenericMailet {
             createSPF(new DNSServiceXBillImpl());
         } else {
             createSPF(spfDnsService);
-        }
+    }
 
         Collection<String> ignoredNetworks = Splitter.on(',')
             .trimResults()
@@ -154,4 +154,4 @@ public class SPF extends GenericMailet {
             }
         }
     }
-}
+        }

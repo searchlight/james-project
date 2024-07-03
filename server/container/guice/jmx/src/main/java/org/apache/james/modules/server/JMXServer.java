@@ -40,13 +40,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.management.remote.JMXConnectorServer;
 import javax.management.remote.JMXConnectorServerFactory;
 import javax.management.remote.JMXServiceURL;
+
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -131,8 +132,9 @@ public class JMXServer implements Startable {
             Map<String, String> environment = Optional.of(existJmxPasswordFile())
                 .filter(FunctionalUtils.identityPredicate())
                 .map(hasJmxPasswordFile -> ImmutableMap.of("jmx.remote.x.password.file", jmxPasswordFilePath,
-                    "jmx.remote.x.access.file", jmxAccessFilePath))
-                .orElse(ImmutableMap.of());
+                    "jmx.remote.x.access.file", jmxAccessFilePath,
+                    "jmx.remote.rmi.server.credentials.filter.pattern", "java.lang.String;!*"))
+                .orElse(ImmutableMap.of("jmx.remote.rmi.server.credentials.filter.pattern", "java.lang.String;!*"));
 
             jmxConnectorServer = JMXConnectorServerFactory.newJMXConnectorServer(new JMXServiceURL(serviceURL),
                 environment,

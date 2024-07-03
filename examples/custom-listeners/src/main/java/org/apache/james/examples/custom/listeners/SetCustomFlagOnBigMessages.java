@@ -19,8 +19,8 @@
 
 package org.apache.james.examples.custom.listeners;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.james.events.Event;
 import org.apache.james.events.EventListener;

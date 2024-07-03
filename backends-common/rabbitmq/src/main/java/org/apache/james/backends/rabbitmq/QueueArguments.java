@@ -60,6 +60,26 @@ public class QueueArguments {
             return this;
         }
 
+        public Builder consumerTimeout(long consumerTimeoutInMillisecond) {
+            arguments.put("x-consumer-timeout", consumerTimeoutInMillisecond);
+            return this;
+        }
+
+        public Builder deliveryLimit(long deliveryLimit) {
+            arguments.put("x-delivery-limit", deliveryLimit);
+            return this;
+        }
+
+        public Builder classicQueueVersion(int version) {
+            arguments.put("x-queue-version", version);
+            return this;
+        }
+
+        public Builder put(String key, Object value) {
+            arguments.put(key, value);
+            return this;
+        }
+
         public ImmutableMap<String, Object> build() {
             return arguments.build();
         }

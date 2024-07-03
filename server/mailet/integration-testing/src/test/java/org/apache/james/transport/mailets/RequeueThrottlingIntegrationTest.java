@@ -31,11 +31,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.stream.IntStream;
 
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.core.Username;
 import org.apache.james.core.builder.MimeMessageBuilder;
-import org.apache.james.jmap.draft.MessageIdProbe;
+import org.apache.james.jmap.MessageIdProbe;
 import org.apache.james.mailbox.model.MessageId;
 import org.apache.james.mailbox.model.MessageResult;
 import org.apache.james.mailbox.model.MultimailboxesSearchQuery;

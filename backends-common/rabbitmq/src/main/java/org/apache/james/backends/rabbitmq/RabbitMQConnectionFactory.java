@@ -33,8 +33,9 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
 
-import javax.inject.Inject;
 import javax.net.ssl.SSLContext;
+
+import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.http.ssl.SSLContextBuilder;
@@ -86,6 +87,9 @@ public class RabbitMQConnectionFactory {
             if (configuration.useSsl()) {
                 setupSslConfiguration(connectionFactory);
             }
+
+            // CF https://github.com/rabbitmq/rabbitmq-java-client/issues/708 causes class cast exceptions
+            connectionFactory.setChannelShouldCheckRpcResponseType(true);
 
             return connectionFactory;
         } catch (Exception e) {

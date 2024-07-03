@@ -20,7 +20,7 @@
 package org.apache.james.jmap.method
 
 import com.google.common.collect.ImmutableMap
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.core.Username
 import org.apache.james.jmap.core.SetError
 import org.apache.james.jmap.core.SetError.SetErrorDescription
@@ -29,17 +29,23 @@ import org.apache.james.jmap.method.DelegateSetDeletePerformer.{DelegateDeletion
 import org.apache.james.mailbox.MailboxSession
 import org.apache.james.user.api.DelegationStore
 import org.apache.james.util.{AuditTrail, ReactorUtils}
+import org.slf4j.LoggerFactory
 import reactor.core.scala.publisher.{SFlux, SMono}
 
 object DelegateSetDeletePerformer {
+  private val LOGGER = LoggerFactory.getLogger(classOf[DelegateSetDeletePerformer])
   sealed trait DelegateDeletionResult
 
   case class DelegateDeletionSuccess(delegationId: DelegationId) extends DelegateDeletionResult
 
   case class DelegateDeletionFailure(unparsedDelegateId: UnparsedDelegateId, exception: Throwable) extends DelegateDeletionResult {
     def asSetError: SetError = exception match {
-      case e: IllegalArgumentException => SetError.invalidArguments(SetErrorDescription(s"${unparsedDelegateId.id} is not a DelegationId: ${e.getMessage}"))
-      case _ => SetError.serverFail(SetErrorDescription(exception.getMessage))
+      case e: IllegalArgumentException =>
+        LOGGER.info("Illegal arguments while deleting a delegation", exception)
+        SetError.invalidArguments(SetErrorDescription(s"${unparsedDelegateId.id} is not a DelegationId: ${e.getMessage}"))
+      case _ =>
+        LOGGER.error("Failed to delete a delegation", exception)
+        SetError.serverFail(SetErrorDescription(exception.getMessage))
     }
   }
 
@@ -60,7 +66,7 @@ object DelegateSetDeletePerformer {
 
 class DelegateSetDeletePerformer @Inject()(delegationStore: DelegationStore) {
   def delete(request: DelegateSetRequest, mailboxSession: MailboxSession): SMono[DelegateDeletionResults] =
-    SFlux.fromIterable(request.destroy.getOrElse(Seq()))
+    SFlux.fromIterable(request.destroy.getOrElse(Seq()).toSet)
       .flatMap(unparsedId => delete(unparsedId, mailboxSession.getUser)
         .onErrorRecover(e => DelegateDeletionFailure(unparsedId, e)),
         maxConcurrency = ReactorUtils.DEFAULT_CONCURRENCY)

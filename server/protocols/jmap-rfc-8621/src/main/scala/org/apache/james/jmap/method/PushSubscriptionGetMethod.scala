@@ -19,13 +19,16 @@
 
 package org.apache.james.jmap.method
 
+import java.time.Clock
+
 import eu.timepit.refined.auto._
-import javax.inject.Inject
-import org.apache.james.jmap.api.model.PushSubscriptionId
+import jakarta.inject.Inject
+import org.apache.james.jmap.api.model.{PushSubscription, PushSubscriptionId}
+import org.apache.james.jmap.api.pushsubscription.PushSubscriptionHelpers.isInThePast
 import org.apache.james.jmap.api.pushsubscription.PushSubscriptionRepository
 import org.apache.james.jmap.core.CapabilityIdentifier.{CapabilityIdentifier, JMAP_CORE}
 import org.apache.james.jmap.core.Invocation.{Arguments, MethodName}
-import org.apache.james.jmap.core.{Ids, Invocation, PushSubscriptionDTO, PushSubscriptionGetRequest, PushSubscriptionGetResponse, SessionTranslator, UnparsedPushSubscriptionId}
+import org.apache.james.jmap.core.{Ids, Invocation, JmapRfc8621Configuration, PushSubscriptionDTO, PushSubscriptionGetRequest, PushSubscriptionGetResponse, SessionTranslator, UnparsedPushSubscriptionId}
 import org.apache.james.jmap.json.PushSubscriptionSerializer
 import org.apache.james.jmap.routes.SessionSupplier
 import org.apache.james.lifecycle.api.Startable
@@ -46,15 +49,18 @@ case class PushSubscriptionGetResults(results: Seq[PushSubscriptionDTO], notFoun
 }
 
 class PushSubscriptionGetMethod @Inject()(pushSubscriptionSerializer: PushSubscriptionSerializer,
-                                          pushSubscriptionRepository: PushSubscriptionRepository,
+                                          val configuration: JmapRfc8621Configuration,
+                                          val pushSubscriptionRepository: PushSubscriptionRepository,
                                           val metricFactory: MetricFactory,
                                           val sessionSupplier: SessionSupplier,
-                                          val sessionTranslator: SessionTranslator) extends MethodWithoutAccountId[PushSubscriptionGetRequest] with Startable {
+                                          val sessionTranslator: SessionTranslator,
+                                          val clock: Clock) extends MethodWithoutAccountId[PushSubscriptionGetRequest] with Startable {
   override val methodName: Invocation.MethodName = MethodName("PushSubscription/get")
   override val requiredCapabilities: Set[CapabilityIdentifier] = Set(JMAP_CORE)
 
   override def getRequest(invocation: Invocation): Either[Exception, PushSubscriptionGetRequest] =
     pushSubscriptionSerializer.deserializePushSubscriptionGetRequest(invocation.arguments.value).asEitherRequest
+      .flatMap(request => request.validate(configuration).map(_ => request))
 
   override def doProcess(invocation: InvocationWithContext, session: MailboxSession, request: PushSubscriptionGetRequest): SMono[InvocationWithContext] =
     request.validateProperties
@@ -74,9 +80,18 @@ class PushSubscriptionGetMethod @Inject()(pushSubscriptionSerializer: PushSubscr
 
   private def retrieveAllRecords(session: MailboxSession): SMono[PushSubscriptionGetResults] =
     SFlux(pushSubscriptionRepository.list(session.getUser))
+      .flatMap(cleanExpiredSubscriptionIfNeeded(session, _))
       .map(PushSubscriptionDTO.from)
       .collectSeq
       .map(dtos => PushSubscriptionGetResults(dtos, Set()))
+
+  private def cleanExpiredSubscriptionIfNeeded(session: MailboxSession, subscription: PushSubscription): SMono[PushSubscription] =
+    if (isInThePast(subscription.expires, clock)) {
+      SMono(pushSubscriptionRepository.revoke(session.getUser, subscription.id))
+        .`then`(SMono.empty)
+    } else {
+      SMono.fromCallable(() => subscription)
+    }
 
   private def retrieveRecords(unparsedIds: Ids, session: MailboxSession): SMono[PushSubscriptionGetResults] = {
     val ids: Set[PushSubscriptionId] = unparsedIds.value
@@ -84,6 +99,7 @@ class PushSubscriptionGetMethod @Inject()(pushSubscriptionSerializer: PushSubscr
       .toSet
 
     SFlux(pushSubscriptionRepository.get(session.getUser, ids.asJava))
+      .flatMap(cleanExpiredSubscriptionIfNeeded(session, _))
       .map(PushSubscriptionDTO.from)
       .collectSeq()
       .map(dtos => PushSubscriptionGetResults(dtos, unparsedIds.value.toSet -- dtos.map(dto => UnparsedPushSubscriptionId.of(dto.id))))

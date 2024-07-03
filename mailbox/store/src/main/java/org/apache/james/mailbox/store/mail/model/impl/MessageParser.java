@@ -86,8 +86,7 @@ public class MessageParser {
             ContentDispositionField.DISPOSITION_TYPE_INLINE.toLowerCase(Locale.US));
     private static final String TEXT_CALENDAR = "text/calendar";
     private static final ImmutableList<String> ATTACHMENT_CONTENT_TYPES = ImmutableList.of(
-        "application/pgp-signature",
-        "message/disposition-notification");
+        "application/pgp-signature");
     private static final ImmutableList<String> ALLOWED_ATTACHMENT_CONTENT_TYPES = ImmutableList.<String>builder()
         .addAll(ATTACHMENT_CONTENT_TYPES)
         .add(TEXT_CALENDAR)
@@ -106,8 +105,16 @@ public class MessageParser {
         DefaultMessageBuilder defaultMessageBuilder = new DefaultMessageBuilder();
         defaultMessageBuilder.setMimeEntityConfig(MimeConfig.PERMISSIVE);
         defaultMessageBuilder.setDecodeMonitor(DecodeMonitor.SILENT);
-        Message message = defaultMessageBuilder.parseMessage(fullContent);
-        return new ParsingResult(retrieveAttachments(message), message::dispose);
+        FileBufferedBodyFactory bodyFactory = new FileBufferedBodyFactory();
+        defaultMessageBuilder.setBodyFactory(bodyFactory);
+        try {
+            Message message = defaultMessageBuilder.parseMessage(fullContent);
+            return new ParsingResult(retrieveAttachments(message), bodyFactory::dispose);
+        } catch (Exception e) {
+            // Release associated temporary files
+            bodyFactory.dispose();
+            throw e;
+        }
     }
 
     public List<ParsedAttachment> retrieveAttachments(Message message) throws IOException {

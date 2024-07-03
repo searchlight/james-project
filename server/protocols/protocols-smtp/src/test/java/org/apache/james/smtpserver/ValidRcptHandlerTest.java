@@ -44,8 +44,8 @@ import org.apache.james.smtpserver.fastfail.ValidRcptHandler;
 import org.apache.james.user.api.UsersRepository;
 import org.apache.james.user.api.UsersRepositoryException;
 import org.apache.james.user.memory.MemoryUsersRepository;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.google.common.base.Preconditions;
 
@@ -236,4 +236,12 @@ class ValidRcptHandlerTest {
         assertThat(rCode).isEqualTo(HookReturnCode.denySoft());
     }
 
+    @Test
+    void doRcptShouldReturnDeclineWhenInvalidUsername() throws Exception {
+        SMTPSession session = setupMockedSMTPSession(!RELAYING_ALLOWED);
+
+        HookReturnCode rCode = handler.doRcpt(session, MAYBE_SENDER, new MailAddress("\"abc@\"@localhost")).getResult();
+
+        assertThat(rCode).isEqualTo(HookReturnCode.deny());
+    }
 }

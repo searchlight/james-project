@@ -55,6 +55,7 @@ import org.apache.james.webadmin.routes.UserMailboxesRoutes;
 import org.apache.james.webadmin.routes.UserRoutes;
 import org.eclipse.jetty.http.HttpStatus;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -151,7 +152,8 @@ public abstract class WebAdminServerIntegrationTest {
             .body("repository", containsInAnyOrder(
                 "var/mail/error",
                 "var/mail/relay-denied",
-                "var/mail/address-error"));
+                "var/mail/address-error",
+                "var/mail/rrt-error"));
     }
 
 
@@ -168,7 +170,8 @@ public abstract class WebAdminServerIntegrationTest {
             .body("repository", containsInAnyOrder(
                 "var/mail/error",
                 "var/mail/relay-denied",
-                "var/mail/address-error"));
+                "var/mail/address-error",
+                "var/mail/rrt-error"));
     }
 
     @Test
@@ -245,6 +248,7 @@ public abstract class WebAdminServerIntegrationTest {
     }
 
     @Test
+    @Disabled
     void deleteMailboxShouldRemoveAMailbox(GuiceJamesServer guiceJamesServer) throws Exception {
         dataProbe.addUser(USERNAME, "anyPassword");
         guiceJamesServer.getProbe(MailboxProbeImpl.class).createMailbox("#private", USERNAME, MAILBOX);

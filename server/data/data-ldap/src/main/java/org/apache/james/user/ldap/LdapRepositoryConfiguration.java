@@ -39,6 +39,7 @@ import com.google.common.collect.ImmutableMap;
 
 public class LdapRepositoryConfiguration {
     public static final String SUPPORTS_VIRTUAL_HOSTING = "supportsVirtualHosting";
+    public static final String SUPPORTS_VIRTUAL_HOSTING_FALLBACK = "enableVirtualHosting";
 
     private static final int NO_CONNECTION_TIMEOUT = 0;
     private static final int NO_READ_TIME_OUT = 0;
@@ -57,6 +58,7 @@ public class LdapRepositoryConfiguration {
         private Optional<String> userIdAttribute;
         private Optional<String> resolveLocalPartAttribute;
         private Optional<String> userObjectClass;
+        private Optional<String> usernameAttribute;
         private Optional<Integer> poolSize;
         private Optional<Boolean> trustAllCerts;
         private ImmutableMap.Builder<Domain, String> perDomainBaseDN;
@@ -70,6 +72,7 @@ public class LdapRepositoryConfiguration {
             userIdAttribute = Optional.empty();
             resolveLocalPartAttribute = Optional.empty();
             userObjectClass = Optional.empty();
+            usernameAttribute = Optional.empty();
             poolSize = Optional.empty();
             trustAllCerts = Optional.empty();
             perDomainBaseDN = ImmutableMap.builder();
@@ -146,6 +149,7 @@ public class LdapRepositoryConfiguration {
                 userListBase.orElse(userBase.get()),
                 userIdAttribute.get(),
                 resolveLocalPartAttribute,
+                usernameAttribute,
                 userObjectClass.get(),
                 NO_CONNECTION_TIMEOUT,
                 NO_READ_TIME_OUT,
@@ -179,11 +183,13 @@ public class LdapRepositoryConfiguration {
             .orElse(userBase);
         String userIdAttribute = configuration.getString("[@userIdAttribute]");
         Optional<String> resolveLocalPartAttribute = Optional.ofNullable(configuration.getString("[@resolveLocalPartAttribute]", null));
+        Optional<String> usernameAttribute = Optional.ofNullable(configuration.getString("[@usernameAttribute]", null));
         String userObjectClass = configuration.getString("[@userObjectClass]");
         // Default is to use connection pooling
         int connectionTimeout = configuration.getInt("[@connectionTimeout]", NO_CONNECTION_TIMEOUT);
         int readTimeout = configuration.getInt("[@readTimeout]", NO_READ_TIME_OUT);
-        boolean supportsVirtualHosting = configuration.getBoolean(SUPPORTS_VIRTUAL_HOSTING, !ENABLE_VIRTUAL_HOSTING);
+        boolean supportsVirtualHostingFallback = configuration.getBoolean(SUPPORTS_VIRTUAL_HOSTING_FALLBACK, !ENABLE_VIRTUAL_HOSTING);
+        boolean supportsVirtualHosting = configuration.getBoolean(SUPPORTS_VIRTUAL_HOSTING, supportsVirtualHostingFallback);
 
         HierarchicalConfiguration<ImmutableNode> restrictionConfig = null;
         // Check if we have a restriction we can use
@@ -221,6 +227,7 @@ public class LdapRepositoryConfiguration {
             userBase,
             userListBase, userIdAttribute,
             resolveLocalPartAttribute,
+            usernameAttribute,
             userObjectClass,
             connectionTimeout,
             readTimeout,
@@ -280,10 +287,16 @@ public class LdapRepositoryConfiguration {
     /**
      * The value of this field is taken from the configuration attribute
      * &quot;userIdAttribute&quot;. This is the LDAP attribute type which holds
-     * the userId value. Note that this is not the same as the email address
-     * attribute.
+     * the userId value. This value is used to identify the LDAP entry used for authentication,
+     * and by default is used to retrieve the associated username.
      */
     private final String userIdAttribute;
+    /**
+     * The value of this field is taken from the configuration attribute
+     * &quot;userIdAttribute&quot;. This is the LDAP attribute is used to, given a LDAP entry,
+     * retrieve the associated username. Defaults to 'userIdAttribute' value.
+     */
+    private final Optional<String> usernameAttribute;
 
     /**
      * The value of this field is taken from the configuration attribute
@@ -335,7 +348,7 @@ public class LdapRepositoryConfiguration {
     private final ImmutableMap<Domain, String> perDomainBaseDN;
 
     private LdapRepositoryConfiguration(List<URI> ldapHosts, String principal, String credentials, String userBase, String userListBase, String userIdAttribute,
-                                        Optional<String> resolveLocalPartAttribute, String userObjectClass, int connectionTimeout, int readTimeout,
+                                        Optional<String> resolveLocalPartAttribute, Optional<String> usernameAttribute, String userObjectClass, int connectionTimeout, int readTimeout,
                                         boolean supportsVirtualHosting, int poolSize, ReadOnlyLDAPGroupRestriction restriction, String filter,
                                         Optional<String> administratorId, boolean trustAllCerts,
                                         ImmutableMap<Domain, String> perDomainBaseDN) throws ConfigurationException {
@@ -346,6 +359,7 @@ public class LdapRepositoryConfiguration {
         this.userListBase = userListBase;
         this.userIdAttribute = userIdAttribute;
         this.resolveLocalPartAttribute = resolveLocalPartAttribute;
+        this.usernameAttribute = usernameAttribute;
         this.userObjectClass = userObjectClass;
         this.connectionTimeout = connectionTimeout;
         this.readTimeout = readTimeout;
@@ -398,6 +412,10 @@ public class LdapRepositoryConfiguration {
 
     public Optional<String> getResolveLocalPartAttribute() {
         return resolveLocalPartAttribute;
+    }
+
+    public Optional<String> getUsernameAttribute() {
+        return usernameAttribute;
     }
 
     public String getUserObjectClass() {
@@ -461,6 +479,7 @@ public class LdapRepositoryConfiguration {
                 && Objects.equals(this.poolSize, that.poolSize)
                 && Objects.equals(this.administratorId, that.administratorId)
                 && Objects.equals(this.trustAllCerts, that.trustAllCerts)
+                && Objects.equals(this.usernameAttribute, that.usernameAttribute)
                 && Objects.equals(this.perDomainBaseDN, that.perDomainBaseDN);
         }
         return false;
@@ -470,6 +489,6 @@ public class LdapRepositoryConfiguration {
     public final int hashCode() {
         return Objects.hash(ldapHosts, principal, credentials, userBase, userListBase, userIdAttribute, resolveLocalPartAttribute, userObjectClass,
             connectionTimeout, readTimeout, supportsVirtualHosting, restriction, filter, administratorId, poolSize,
-            trustAllCerts, perDomainBaseDN);
+            trustAllCerts, perDomainBaseDN, usernameAttribute);
     }
 }

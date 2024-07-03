@@ -37,14 +37,19 @@
     <processors>
         <processor state="root" enableJmx="true">
             <mailet match="All" class="PostmasterAlias"/>
-            <mailet match="RelayLimit=30" class="Null"/>
+            <mailet match="RelayLimit=30" class="ToRepository">
+                <repositoryPath>file://var/mail/relay-limit-exceeded/</repositoryPath>
+            </mailet>
             <mailet match="All" class="ToProcessor">
                 <processor>transport</processor>
             </mailet>
         </processor>
 
         <processor state="error" enableJmx="true">
-            <mailet match="All" class="Bounce">
+            <matcher name="not-reprocessed" match="org.apache.james.mailetcontainer.impl.matchers.Not">
+                <matcher match="HasMailAttribute=mailRepository-reprocessing"/>
+            </matcher>
+            <mailet match="not-reprocessed" class="Bounce">
                 <onMailetException>ignore</onMailetException>
             </mailet>
             <mailet match="All" class="ToRepository">

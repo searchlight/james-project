@@ -22,12 +22,20 @@ package org.apache.james.webadmin.authentication;
 import static spark.Spark.halt;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.inject.Inject;
-import javax.inject.Named;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.jwt.JwtTokenVerifier;
 import org.eclipse.jetty.http.HttpStatus;
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 import spark.Request;
 import spark.Response;
@@ -52,11 +60,69 @@ public class JwtFilter implements AuthenticationFilter {
                 .map(value -> value.substring(AUTHORIZATION_HEADER_PREFIX.length()));
 
             checkHeaderPresent(bearer);
-            String login = retrieveUser(bearer);
-            checkIsAdmin(bearer);
-
+            String login = retrieveUser(bearer); // subject field can't be null
+            if (typeEqualAdmin(bearer)) {
+                // If type equal admin , Has all the permissions
+                //checkIsAdmin(bearer); // admin field should be true
+            } else {
+                checkIfNotAdminAndTypeEqualAgent(bearer,request);
+            }
             request.attribute(LOGIN, login);
         }
+    }
+
+    private boolean typeEqualAdmin(Optional<String> bearer) throws JsonProcessingException {
+        String token = bearer.get();
+        DecodedJWT jwt = JWT.decode(token);
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(jwt.getPayload()));
+        // Parse payload JSON
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode payloadNode = mapper.readTree(payload);
+
+        JsonNode typeNode = payloadNode.get("type");
+        String type = typeNode != null ? typeNode.asText() : "N/A";
+        if (type.equals("admin")) {
+            return true;
+        }
+        return false;
+    }
+
+    private void checkIfNotAdminAndTypeEqualAgent(Optional<String> bearer, Request request) throws JsonProcessingException {
+        String token = bearer.get();
+        DecodedJWT jwt = JWT.decode(token);
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(jwt.getPayload()));
+        // Parse payload JSON
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode payloadNode = mapper.readTree(payload);
+
+        JsonNode typeNode = payloadNode.get("type");
+        String type = typeNode != null ? typeNode.asText() : "N/A";
+        if (!type.equals("agent")) {
+            halt(HttpStatus.UNAUTHORIZED_401, "Non authorized user.Type is not agent");
+        }
+        AtomicBoolean flag = new AtomicBoolean(false);
+
+        String requestMethod = request.requestMethod().toString();
+        //Dynamic Check
+        JsonNode permissionNode = payloadNode.get("permissions");
+        if (permissionNode != null && permissionNode.isObject()) {
+            permissionNode.fields().forEachRemaining(entry -> {
+                String key = entry.getKey();
+                if (match(key, "perm" + request.pathInfo())) {
+                    JsonNode groupValueNode = permissionNode.get(key);
+                    for (JsonNode valueNode : groupValueNode) {
+                        if (requestMethod.equals(valueNode.asText())) {
+                            flag.set(true);
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+        if (flag.get()) {
+            return;
+        }
+        halt(HttpStatus.UNAUTHORIZED_401, "Non authorized user.Do not have permission.");
     }
 
     private void checkHeaderPresent(Optional<String> bearer) {
@@ -76,4 +142,26 @@ public class JwtFilter implements AuthenticationFilter {
         }
     }
 
+    private boolean match(String key, String path) {
+        String key1 = key.replace('.', '@');
+        String[] keyArr = key1.split("@");
+        String[] pathArr = path.split("/");
+
+        if (pathArr.length != keyArr.length) {
+            return false;
+        }
+        Integer it = 0;
+        Integer length = keyArr.length;
+        while (it < length) {
+            if (keyArr[it].equals("*")) {
+                it++;
+                continue;
+            }
+            if (!keyArr[it].equals(pathArr[it])) {
+                return false;
+            }
+            it++;
+        }
+        return true;
+    }
 }

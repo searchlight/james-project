@@ -19,7 +19,7 @@
 
 package org.apache.james.webadmin.data.jmap;
 
-import static javax.mail.Flags.Flag.DELETED;
+import static jakarta.mail.Flags.Flag.DELETED;
 import static org.apache.james.mailbox.MailboxManager.MailboxSearchFetchType.Minimal;
 
 import java.io.IOException;
@@ -30,7 +30,7 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.jmap.api.projections.EmailQueryView;
 import org.apache.james.mailbox.MailboxManager;

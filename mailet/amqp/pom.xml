@@ -34,7 +34,6 @@
     <description>Provides a mailet forwarding mail attributes over AMQP</description>
     <inceptionYear>2021</inceptionYear>
 
-
     <dependencies>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -80,12 +79,8 @@
             <artifactId>amqp-client</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>javax.mail</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>javax.annotation</groupId>
-            <artifactId>javax.annotation-api</artifactId>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
         </dependency>
         <dependency>
             <groupId>net.javacrumbs.json-unit</groupId>
@@ -104,6 +99,10 @@
             <groupId>org.apache.james</groupId>
             <artifactId>apache-mime4j-dom</artifactId>
             <version>${apache-mime4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>jakarta.mail</artifactId>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>

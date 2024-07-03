@@ -57,7 +57,6 @@ import org.apache.james.utils.SMTPMessageSender;
 import org.apache.james.utils.TestIMAPClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -141,6 +140,31 @@ class SubAddressingRelayTest {
                         .name("NOTIFY")
                         .value("FAILURE,DELAY")
                         .build())
+                    .build())
+                .build()));
+    }
+
+    @Test
+    void remoteDeliveryShouldAcceptQuotedMailAddress(DockerMockSmtp mockSmtp) throws Exception {
+        AuthenticatingSMTPClient smtpClient = new AuthenticatingSMTPClient("TLS", "UTF-8");
+
+        try {
+            smtpClient.connect("localhost", jamesServer.getProbe(SmtpGuiceProbe.class).getSmtpPort().getValue());
+            smtpClient.ehlo(DEFAULT_DOMAIN);
+            smtpClient.mail("<" + FROM + ">");
+            smtpClient.rcpt("<\"abc@def\"@other.com> NOTIFY=FAILURE,DELAY");
+            smtpClient.sendShortMessageData("A short message...");
+        } finally {
+            smtpClient.disconnect();
+        }
+
+        calmlyAwait.atMost(TEN_SECONDS).untilAsserted(() -> assertThat(mockSmtp.getConfigurationClient().listMails())
+            .hasSize(1)
+            .extracting(Mail::getEnvelope)
+            .containsOnly(Mail.Envelope.builder()
+                .from(new MailAddress(FROM))
+                .addRecipient(Mail.Recipient.builder()
+                    .address(new MailAddress("\"abc@def\"@other.com"))
                     .build())
                 .build()));
     }

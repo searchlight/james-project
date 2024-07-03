@@ -254,17 +254,15 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
-            <artifactId>james-server-jmap-draft-integration-testing</artifactId>
-            <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailbox-plugin-deleted-messages-vault-guice</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
             <artifactId>james-server-mailets</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-protocols-smtp-dkim</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
@@ -319,13 +317,37 @@
             <artifactId>logback-json-classic</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.github.steveash.guavate</groupId>
+            <artifactId>guavate</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.linagora</groupId>
             <artifactId>logback-elasticsearch-appender</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.james</groupId>
+            <artifactId>james-server-helpers</artifactId>
+            <version>3.9.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.apache.james</groupId>
@@ -337,8 +359,26 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
@@ -355,6 +395,7 @@
             <artifactId>testcontainers</artifactId>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
@@ -405,12 +446,12 @@
                 <artifactId>jib-maven-plugin</artifactId>
                 <configuration>
                     <from>
-                        <image>eclipse-temurin:11-jre-jammy</image>
+                        <image>eclipse-temurin:21-jre-jammy</image>
                     </from>
                     <to>
-                        <image>apache/james</image>
+                        <image>shn27/distributed-james-test</image>
                         <tags>
-                            <tag>distributed-latest</tag>
+                            <tag>chibenwa-fix-and</tag>
                         </tags>
                     </to>
                     <container>
@@ -453,7 +494,7 @@
                     <extraDirectories>
                         <paths>
                             <path>
-                                <from>sample-configuration</from>
+                                <from>conf</from>
                                 <into>/root/conf</into>
                             </path>
                             <path>

@@ -24,8 +24,8 @@ import static org.apache.james.util.ReactorUtils.logOnError;
 import java.util.Date;
 import java.util.List;
 
-import javax.inject.Inject;
-import javax.mail.Flags;
+import jakarta.inject.Inject;
+import jakarta.mail.Flags;
 
 import org.apache.james.imap.api.ImapConfiguration;
 import org.apache.james.imap.api.display.HumanReadableText;
@@ -103,8 +103,6 @@ public class AppendProcessor extends AbstractMailboxProcessor<AppendRequest> imp
             })
             .doOnEach(logOnError(OverQuotaException.class, e -> LOGGER.info("Append failed for mailbox {} because overquota", mailboxPath)))
             .onErrorResume(OverQuotaException.class, e -> {
-                // Indicates that the mailbox does not exist
-                // So TRY CREATE
                 no(request, responder, HumanReadableText.FAILURE_OVERQUOTA, StatusResponse.ResponseCode.overQuota());
                 return Mono.empty();
             })

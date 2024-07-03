@@ -26,7 +26,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.james.mime4j.dom.Body;
@@ -93,7 +93,7 @@ public class MessageContentExtractor {
     }
 
     private Optional<String> asString(TextBody textBody) throws IOException {
-        return Optional.ofNullable(IOUtils.toString(textBody.getInputStream(),
+        return Optional.ofNullable(new String(IOUtils.toByteArray(textBody.getInputStream(), textBody.size()),
             Optional.ofNullable(textBody.getCharset())
                 .orElse(org.apache.james.mime4j.Charsets.DEFAULT_CHARSET)));
     }

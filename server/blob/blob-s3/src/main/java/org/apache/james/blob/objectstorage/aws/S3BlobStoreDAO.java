@@ -28,14 +28,19 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.james.blob.api.BlobId;
@@ -44,6 +49,8 @@ import org.apache.james.blob.api.BucketName;
 import org.apache.james.blob.api.ObjectNotFoundException;
 import org.apache.james.blob.api.ObjectStoreIOException;
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.GaugeRegistry;
+import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.ReactorUtils;
 import org.reactivestreams.Publisher;
 
@@ -83,6 +90,26 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
+    private static final TrustManager DUMMY_TRUST_MANAGER = new X509TrustManager() {
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+            // Always trust
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+            // Always trust
+        }
+    };
+
+    private static final String S3_METRICS_ENABLED_PROPERTY_KEY = "james.s3.metrics.enabled";
+    private static final String S3_METRICS_ENABLED_DEFAULT_VALUE = "true";
+
     private static class FileBackedOutputStreamByteSource extends ByteSource {
         private final FileBackedOutputStream stream;
         private final long size;
@@ -122,7 +149,8 @@ public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
     private final S3BlobStoreConfiguration configuration;
 
     @Inject
-    S3BlobStoreDAO(S3BlobStoreConfiguration configuration, BlobId.Factory blobIdFactory) {
+    @Singleton
+    S3BlobStoreDAO(S3BlobStoreConfiguration configuration, BlobId.Factory blobIdFactory, MetricFactory metricFactory, GaugeRegistry gaugeRegistry) {
         this.blobIdFactory = blobIdFactory;
         this.configuration = configuration;
         AwsS3AuthConfiguration authConfiguration = this.configuration.getSpecificAuthConfiguration();
@@ -138,6 +166,12 @@ public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
             .endpointOverride(authConfiguration.getEndpoint())
             .region(configuration.getRegion().asAws())
             .serviceConfiguration(pathStyleAccess)
+            .overrideConfiguration(builder -> {
+                boolean s3MetricsEnabled = Boolean.parseBoolean(System.getProperty(S3_METRICS_ENABLED_PROPERTY_KEY, S3_METRICS_ENABLED_DEFAULT_VALUE));
+                if (s3MetricsEnabled) {
+                    builder.addMetricPublisher(new JamesS3MetricPublisher(metricFactory, gaugeRegistry));
+                }
+            })
             .build();
 
         bucketNameResolver = BucketNameResolver.builder()
@@ -154,10 +188,14 @@ public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
         configuration.getWriteTimeout().ifPresent(result::writeTimeout);
         configuration.getReadTimeout().ifPresent(result::readTimeout);
         configuration.getConnectionTimeout().ifPresent(result::connectionTimeout);
+        result.useNonBlockingDnsResolver(true);
         return result;
     }
 
     private TlsTrustManagersProvider getTrustManagerProvider(AwsS3AuthConfiguration configuration) {
+        if (configuration.isTrustAll()) {
+            return () -> ImmutableList.of(DUMMY_TRUST_MANAGER).toArray(new TrustManager[0]);
+        }
         try {
             TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
                 configuration.getTrustStoreAlgorithm().orElse(TrustManagerFactory.getDefaultAlgorithm()));
@@ -208,7 +246,18 @@ public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
         return getObject(resolvedBucketName, blobId)
             .onErrorMap(NoSuchBucketException.class, e -> new ObjectNotFoundException("Bucket not found " + resolvedBucketName.asString(), e))
             .onErrorMap(NoSuchKeyException.class, e -> new ObjectNotFoundException("Blob not found " + blobId.asString() + " in bucket " + resolvedBucketName.asString(), e))
+            .publishOn(ReactorUtils.BLOCKING_CALL_WRAPPER)
             .map(res -> ReactorUtils.toInputStream(res.flux));
+    }
+
+    @Override
+    public Publisher<ReactiveByteSource> readAsByteSource(BucketName bucketName, BlobId blobId) {
+        BucketName resolvedBucketName = bucketNameResolver.resolve(bucketName);
+
+        return getObject(resolvedBucketName, blobId)
+            .onErrorMap(NoSuchBucketException.class, e -> new ObjectNotFoundException("Bucket not found " + resolvedBucketName.asString(), e))
+            .onErrorMap(NoSuchKeyException.class, e -> new ObjectNotFoundException("Blob not found " + blobId.asString() + " in bucket " + resolvedBucketName.asString(), e))
+            .map(res -> new ReactiveByteSource(res.sdkResponse.contentLength(), res.flux));
     }
 
     private static class FluxResponse {
@@ -303,14 +352,15 @@ public class S3BlobStoreDAO implements BlobStoreDAO, Startable, Closeable {
         BucketName resolvedBucketName = bucketNameResolver.resolve(bucketName);
 
         return Mono.fromCallable(content::size)
+            .subscribeOn(Schedulers.boundedElastic())
             .flatMap(contentLength ->
                 Mono.usingWhen(Mono.fromCallable(content::openStream).subscribeOn(Schedulers.boundedElastic()),
                     stream -> save(resolvedBucketName, blobId, stream, contentLength),
                     stream -> Mono.fromRunnable(Throwing.runnable(stream::close))))
             .retryWhen(createBucketOnRetry(resolvedBucketName))
             .onErrorMap(IOException.class, e -> new ObjectStoreIOException("Error saving blob", e))
+            .retryWhen(configuration.uploadRetrySpec())
             .onErrorMap(SdkClientException.class, e -> new ObjectStoreIOException("Error saving blob", e))
-            .publishOn(Schedulers.parallel())
             .then();
     }
 

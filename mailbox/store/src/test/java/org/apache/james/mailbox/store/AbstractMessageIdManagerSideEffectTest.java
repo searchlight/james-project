@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.quota.QuotaCountLimit;
@@ -174,7 +174,7 @@ public abstract class AbstractMessageIdManagerSideEffectTest {
         MessageMetaData simpleMessageMetaData2 = messageResult2.messageMetaData();
 
         eventBus.register(eventCollector);
-        Mono.from(messageIdManager.delete(ImmutableList.of(messageId1, messageId2), session))
+        Mono.from(messageIdManager.delete(ImmutableSet.of(messageId1, messageId2), session))
             .subscribeOn(Schedulers.newSingle("test"))
             .block();
 

@@ -18,6 +18,7 @@
                         <pattern>%d{HH:mm:ss.SSS} [%-5level] %logger{15} - %msg%n%rEx</pattern>
                 </encoder>
                 <immediateFlush>false</immediateFlush>
+                <!-- Disable below block for debug logs mode-->
                 <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
                         <level>ERROR</level>
                 </filter>
@@ -28,5 +29,6 @@
                 <appender-ref ref="FILE" />
         </root>
         <logger name="org.apache.james" level="DEBUG" />
-	<logger name="org.testcontainers" level="DEBUG"/>
+        <logger name="org.testcontainers" level="DEBUG"/>
+        <logger name="org.apache.james.metrics" level="INFO"/>
 </configuration>

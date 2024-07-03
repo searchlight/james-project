@@ -30,6 +30,7 @@ import org.apache.james.ProtocolConfigurationSanitizer;
 import org.apache.james.RunArguments;
 import org.apache.james.filesystem.api.FileSystem;
 import org.apache.james.imap.ImapSuite;
+import org.apache.james.imap.api.ConnectionCheckFactory;
 import org.apache.james.imap.api.display.Localizer;
 import org.apache.james.imap.api.message.response.StatusResponseFactory;
 import org.apache.james.imap.api.process.DefaultMailboxTyper;
@@ -55,6 +56,7 @@ import org.apache.james.imap.processor.DefaultProcessor;
 import org.apache.james.imap.processor.EnableProcessor;
 import org.apache.james.imap.processor.PermitEnableCapabilityProcessor;
 import org.apache.james.imap.processor.SelectProcessor;
+import org.apache.james.imap.processor.StatusProcessor;
 import org.apache.james.imap.processor.base.AbstractProcessor;
 import org.apache.james.imap.processor.base.UnknownRequestProcessor;
 import org.apache.james.imapserver.netty.IMAPServerFactory;
@@ -97,12 +99,14 @@ public class IMAPServerModule extends AbstractModule {
         bind(CapabilityProcessor.class).in(Scopes.SINGLETON);
         bind(AuthenticateProcessor.class).in(Scopes.SINGLETON);
         bind(SelectProcessor.class).in(Scopes.SINGLETON);
+        bind(StatusProcessor.class).in(Scopes.SINGLETON);
         bind(EnableProcessor.class).in(Scopes.SINGLETON);
         bind(MailboxTyper.class).to(DefaultMailboxTyper.class).in(Scopes.SINGLETON);
 
         Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding().to(ImapGuiceProbe.class);
 
         Multibinder.newSetBinder(binder(), CertificateReloadable.Factory.class).addBinding().to(IMAPServerFactory.class);
+        bind(ConnectionCheckFactory.class).to(ConnectionCheckFactoryImpl.class);
     }
 
     @Provides
@@ -111,8 +115,9 @@ public class IMAPServerModule extends AbstractModule {
                                            GuiceGenericLoader loader,
                                            StatusResponseFactory statusResponseFactory,
                                            MetricFactory metricFactory,
-                                           GaugeRegistry gaugeRegistry) {
-        return new IMAPServerFactory(fileSystem, imapSuiteLoader(loader, statusResponseFactory), metricFactory, gaugeRegistry);
+                                           GaugeRegistry gaugeRegistry,
+                                           ConnectionCheckFactory connectionCheckFactory) {
+        return new IMAPServerFactory(fileSystem, imapSuiteLoader(loader, statusResponseFactory), metricFactory, gaugeRegistry, connectionCheckFactory);
     }
 
     DefaultProcessor provideClassImapProcessors(ImapPackage imapPackage, GuiceGenericLoader loader, StatusResponseFactory statusResponseFactory) {

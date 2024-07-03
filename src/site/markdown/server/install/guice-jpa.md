@@ -9,7 +9,7 @@
 
 ### Download the artifacts
 
-Download james-jpa-guice-3.8.0.zip from [the download page](http://james.apache.org/download.cgi#Apache_James_Server) and deflate it.
+Download james-jpa-guice-3.8.1.zip from [the download page](http://james.apache.org/download.cgi#Apache_James_Server) and deflate it.
 
 ### (alternative) Building the artifacts
 
@@ -46,9 +46,9 @@ $ keytool -genkey -alias james -keyalg RSA -keystore conf/keystore
 Once everything is set up, you just have to run the jar with:
 
 ```bash
-$ java -classpath 'james-server-jpa-guice.jar:james-server-jpa-guice.lib/*' \
-    -javaagent:james-server-jpa-guice.lib/openjpa-3.0.0.jar \
+$ java -javaagent:james-server-jpa-guice.lib/openjpa-3.2.0.jar \
     -Dlogback.configurationFile=conf/logback.xml \
+    -Djdk.tls.ephemeralDHKeySize=2048 \
     -Dworking.directory=. \
-    org.apache.james.JPAJamesServerMain
+    -jar james-server-jpa-app.jar
 ```

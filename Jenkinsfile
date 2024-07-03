@@ -19,8 +19,8 @@
  *
  */
 
-def AGENT_LABEL = env.AGENT_LABEL ?: 'ubuntu'
-def JDK_NAME = env.JDK_NAME ?: 'jdk_11_latest'
+def AGENT_LABEL = env.AGENT_LABEL ?: 'ubuntu && !ephemeral'
+def JDK_NAME = env.JDK_NAME ?: 'jdk_21_latest'
 
 pipeline {
 

@@ -25,8 +25,8 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.mail.internet.ParseException;
+import jakarta.inject.Inject;
+import jakarta.mail.internet.ParseException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;

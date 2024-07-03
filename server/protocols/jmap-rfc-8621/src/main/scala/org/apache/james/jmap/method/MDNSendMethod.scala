@@ -19,19 +19,20 @@
 
 package org.apache.james.jmap.method
 
+import com.google.common.collect.ImmutableList
 import eu.timepit.refined.auto._
-import javax.annotation.PreDestroy
-import javax.inject.Inject
-import javax.mail.internet.MimeMessage
+import jakarta.annotation.PreDestroy
+import jakarta.inject.Inject
+import jakarta.mail.internet.MimeMessage
 import org.apache.james.jmap.api.model.Identity
 import org.apache.james.jmap.core.CapabilityIdentifier.{CapabilityIdentifier, JMAP_CORE, JMAP_MAIL, JMAP_MDN}
 import org.apache.james.jmap.core.Invocation._
-import org.apache.james.jmap.core.{Invocation, SessionTranslator}
+import org.apache.james.jmap.core.{Invocation, JmapRfc8621Configuration, SessionTranslator}
 import org.apache.james.jmap.json.MDNSerializer
 import org.apache.james.jmap.mail.MDN._
 import org.apache.james.jmap.mail.MDNSend.MDN_ALREADY_SENT_FLAG
 import org.apache.james.jmap.mail._
-import org.apache.james.jmap.method.EmailSubmissionSetMethod.LOGGER
+import org.apache.james.jmap.method.EmailSubmissionSetMethod.{LOGGER, MAIL_METADATA_USERNAME_ATTRIBUTE}
 import org.apache.james.jmap.routes.{ProcessingContext, SessionSupplier}
 import org.apache.james.lifecycle.api.{LifecycleUtil, Startable}
 import org.apache.james.mailbox.model.{FetchGroup, MessageResult}
@@ -47,7 +48,7 @@ import org.apache.james.mime4j.stream.MimeConfig
 import org.apache.james.queue.api.MailQueueFactory.SPOOL
 import org.apache.james.queue.api.{MailQueue, MailQueueFactory}
 import org.apache.james.server.core.MailImpl
-import org.apache.james.util.ReactorUtils
+import org.apache.mailet.{Attribute, AttributeValue}
 import play.api.libs.json.{JsError, JsObject, JsSuccess}
 import reactor.core.scala.publisher.{SFlux, SMono}
 
@@ -59,6 +60,7 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
                               mailQueueFactory: MailQueueFactory[_ <: MailQueue],
                               messageIdManager: MessageIdManager,
                               emailSetMethod: EmailSetMethod,
+                              val configuration: JmapRfc8621Configuration,
                               val identityResolver: IdentityResolver,
                               val metricFactory: MetricFactory,
                               val sessionSupplier: SessionSupplier,
@@ -107,31 +109,39 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
   override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[Exception, MDNSendRequest] =
     serializer.deserializeMDNSendRequest(invocation.arguments.value)
       .asEitherRequest
-      .flatMap(_.validate)
+      .flatMap(_.validate(configuration))
 
   private def create(identity: Identity,
                      request: MDNSendRequest,
                      session: MailboxSession,
-                     processingContext: ProcessingContext): SMono[(MDNSendResults, ProcessingContext)] =
-    SFlux.fromIterable(request.send.view)
-      .fold(MDNSendResults.empty -> processingContext) {
-        (acc: (MDNSendResults, ProcessingContext), elem: (MDNSendCreationId, JsObject)) => {
-          val (mdnSendId, jsObject) = elem
-          val (creationResult, updatedProcessingContext) = createMDNSend(session, identity, mdnSendId, jsObject, acc._2)
-          (MDNSendResults.merge(acc._1, creationResult) -> updatedProcessingContext)
-        }
+                     processingContext: ProcessingContext): SMono[(MDNSendResults, ProcessingContext)] = {
+    val list = request.send.view.toList
+    SFlux.just((list, MDNSendResults.empty, processingContext))
+      .expand {
+        case (head :: tail, result, context) =>
+          createMDNSend(session, identity, head._1, head._2, context)
+            .map {
+              case (newResult, newContext) => (tail, MDNSendResults.merge(result, newResult), newContext)
+            }
+        case _ =>
+          SMono.empty
       }
-      .subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER)
+      .last()
+      .map {
+        case (_, result, context) => (result, context)
+      }
+  }
 
   private def createMDNSend(session: MailboxSession,
                             identity: Identity,
                             mdnSendCreationId: MDNSendCreationId,
                             jsObject: JsObject,
-                            processingContext: ProcessingContext): (MDNSendResults, ProcessingContext) =
+                            processingContext: ProcessingContext): SMono[(MDNSendResults, ProcessingContext)] =
     parseMDNRequest(jsObject)
+      .fold(e => SMono.error(e), request => SMono.just(request))
       .flatMap(createRequest => sendMDN(session, identity, mdnSendCreationId, createRequest))
-      .fold(error => (MDNSendResults.notSent(mdnSendCreationId, error) -> processingContext),
-        creation => MDNSendResults.sent(creation) -> processingContext)
+      .map(creation => MDNSendResults.sent(creation) -> processingContext)
+      .onErrorResume(e => SMono.just(MDNSendResults.notSent(mdnSendCreationId, e) -> processingContext))
 
   private def parseMDNRequest(jsObject: JsObject): Either[MDNSendRequestInvalidException, MDNSendCreateRequest] =
     MDNSendCreateRequest.validateProperties(jsObject)
@@ -143,13 +153,15 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
   private def sendMDN(session: MailboxSession,
                       identity: Identity,
                       mdnSendCreationId: MDNSendCreationId,
-                      requestEntry: MDNSendCreateRequest): Either[Throwable, MDNSendCreateSuccess] =
+                      requestEntry: MDNSendCreateRequest): SMono[MDNSendCreateSuccess] =
     for {
       mdnRelatedMessageResult <- retrieveRelatedMessageResult(session, requestEntry)
       mdnRelatedMessageResultAlready <- validateMDNNotAlreadySent(mdnRelatedMessageResult)
+        .fold(e => SMono.error(e), result => SMono.just(result))
       messageRelated = parseAsMessage(mdnRelatedMessageResultAlready)
-      mailAndResponseAndId <- buildMailAndResponse(identity, session.getUser.asString(), requestEntry, messageRelated)
-      _ <- Try(enqueue(mailAndResponseAndId._1)).toEither
+      mailAndResponseAndId <- buildMailAndResponse(identity, session.getUser.asString(), requestEntry, messageRelated, session)
+        .fold(e => SMono.error(e), result => SMono.just(result))
+      _ <- enqueue(mailAndResponseAndId._1).`then`(SMono.just(mailAndResponseAndId._1))
     } yield {
       MDNSendCreateSuccess(
         mdnCreationId = mdnSendCreationId,
@@ -157,19 +169,14 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
         forEmailId = mdnRelatedMessageResultAlready.getMessageId)
     }
 
-  private def enqueue(mail: MailImpl): Unit = try {
-    queue.enQueue(mail)
-  } finally {
-    LifecycleUtil.dispose(mail)
-  }
+  private def enqueue(mail: MailImpl): SMono[Unit] =
+    SMono(queue.enqueueReactive(mail))
+      .doFinally(_ =>  LifecycleUtil.dispose(mail))
+      .`then`()
 
-  private def retrieveRelatedMessageResult(session: MailboxSession, requestEntry: MDNSendCreateRequest): Either[MDNSendNotFoundException, MessageResult] =
-    messageIdManager.getMessage(requestEntry.forEmailId.originalMessageId, FetchGroup.FULL_CONTENT, session)
-      .asScala
-      .toList
-      .headOption
-      .toRight(MDNSendNotFoundException("The reference \"forEmailId\" cannot be found."))
-
+  private def retrieveRelatedMessageResult(session: MailboxSession, requestEntry: MDNSendCreateRequest): SMono[MessageResult] =
+    SMono(messageIdManager.getMessagesReactive(ImmutableList.of(requestEntry.forEmailId.originalMessageId), FetchGroup.FULL_CONTENT, session))
+      .switchIfEmpty(SMono.error(MDNSendNotFoundException(s"The reference \"forEmailId\" ${requestEntry.forEmailId.originalMessageId.serialize()} cannot be found for user ${session.getUser.asString()}.")))
 
   private def validateMDNNotAlreadySent(relatedMessageResult: MessageResult): Either[MDNSendAlreadySentException, MessageResult] =
     if (relatedMessageResult.getFlags.contains(MDN_ALREADY_SENT_FLAG)) {
@@ -178,22 +185,22 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
       scala.Right(relatedMessageResult)
     }
 
-  private def buildMailAndResponse(identity: Identity, sender: String, requestEntry: MDNSendCreateRequest, originalMessage: Message): Either[Throwable, (MailImpl, MDNSendCreateResponse)] =
+  private def buildMailAndResponse(identity: Identity, sender: String, requestEntry: MDNSendCreateRequest, originalMessage: Message, mailboxSession: MailboxSession): Either[Throwable, (MailImpl, MDNSendCreateResponse)] =
     for {
       mailRecipient <- getMailRecipient(originalMessage)
       mdnFinalRecipient <- getMDNFinalRecipient(requestEntry, identity)
       mdnOriginalRecipient = OriginalRecipient.builder().originalRecipient(Text.fromRawText(sender)).build()
       mdn = buildMDN(requestEntry, originalMessage, mdnFinalRecipient, mdnOriginalRecipient)
       subject = buildMessageSubject(requestEntry, originalMessage)
-      (mailImpl, mimeMessage) = buildMailAndMimeMessage(sender, mailRecipient, subject, mdn)
+      (mailImpl, mimeMessage) = buildMailAndMimeMessage(sender, mailRecipient, subject, mdn, mailboxSession)
     } yield {
       (mailImpl, buildMDNSendCreateResponse(requestEntry, mdn, mimeMessage))
     }
 
-  private def buildMailAndMimeMessage(sender: String, recipient: String, subject: String, mdn: MDN): (MailImpl, MimeMessage) = {
+  private def buildMailAndMimeMessage(sender: String, recipient: String, subject: String, mdn: MDN, mailboxSession: MailboxSession): (MailImpl, MimeMessage) = {
     val mimeMessage: MimeMessage = mdn.asMimeMessage()
     mimeMessage.setFrom(sender)
-    mimeMessage.setRecipients(javax.mail.Message.RecipientType.TO, recipient)
+    mimeMessage.setRecipients(jakarta.mail.Message.RecipientType.TO, recipient)
     mimeMessage.setSubject(subject)
     mimeMessage.saveChanges()
 
@@ -202,6 +209,7 @@ class MDNSendMethod @Inject()(serializer: MDNSerializer,
       .sender(sender)
       .addRecipient(recipient)
       .mimeMessage(mimeMessage)
+      .addAttribute(new Attribute(MAIL_METADATA_USERNAME_ATTRIBUTE, AttributeValue.of(mailboxSession.getUser.asString())))
       .build()
     mailImpl -> mimeMessage
   }

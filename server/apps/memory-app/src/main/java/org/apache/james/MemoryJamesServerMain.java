@@ -21,8 +21,8 @@ package org.apache.james;
 
 import org.apache.commons.configuration2.BaseHierarchicalConfiguration;
 import org.apache.james.data.UsersRepositoryModuleChooser;
+import org.apache.james.jmap.JMAPListenerModule;
 import org.apache.james.jmap.api.identity.CustomIdentityDAO;
-import org.apache.james.jmap.draft.JMAPListenerModule;
 import org.apache.james.jmap.memory.identity.MemoryCustomIdentityDAO;
 import org.apache.james.jmap.memory.pushsubscription.MemoryPushSubscriptionModule;
 import org.apache.james.jwt.JwtConfiguration;
@@ -34,6 +34,7 @@ import org.apache.james.modules.RunArgumentsModule;
 import org.apache.james.modules.data.MemoryDataJmapModule;
 import org.apache.james.modules.data.MemoryDataModule;
 import org.apache.james.modules.data.MemoryDelegationStoreModule;
+import org.apache.james.modules.data.MemoryDropListsModule;
 import org.apache.james.modules.data.MemoryUsersRepositoryModule;
 import org.apache.james.modules.eventstore.MemoryEventStoreModule;
 import org.apache.james.modules.mailbox.MemoryMailboxModule;
@@ -49,6 +50,7 @@ import org.apache.james.modules.queue.memory.MemoryMailQueueModule;
 import org.apache.james.modules.server.DKIMMailetModule;
 import org.apache.james.modules.server.DLPRoutesModule;
 import org.apache.james.modules.server.DataRoutesModules;
+import org.apache.james.modules.server.DropListsRoutesModule;
 import org.apache.james.modules.server.InconsistencyQuotasSolvingRoutesModule;
 import org.apache.james.modules.server.JMXServerModule;
 import org.apache.james.modules.server.JmapTasksModule;
@@ -63,6 +65,7 @@ import org.apache.james.modules.server.SieveRoutesModule;
 import org.apache.james.modules.server.TaskManagerModule;
 import org.apache.james.modules.server.UserIdentityModule;
 import org.apache.james.modules.server.VacationRoutesModule;
+import org.apache.james.modules.server.WebAdminMailOverWebModule;
 import org.apache.james.modules.server.WebAdminServerModule;
 import org.apache.james.modules.vault.DeletedMessageVaultModule;
 import org.apache.james.modules.vault.DeletedMessageVaultRoutesModule;
@@ -89,7 +92,8 @@ public class MemoryJamesServerMain implements JamesServerMain {
         new MailQueueRoutesModule(),
         new MailRepositoriesRoutesModule(),
         new SieveRoutesModule(),
-        new UserIdentityModule());
+        new UserIdentityModule(),
+        new WebAdminMailOverWebModule());
 
     public static final JwtConfiguration NO_JWT_CONFIGURATION = new JwtConfiguration(ImmutableList.of());
 
@@ -172,12 +176,22 @@ public class MemoryJamesServerMain implements JamesServerMain {
             .combineWith(IN_MEMORY_SERVER_AGGREGATE_MODULE)
             .combineWith(new UsersRepositoryModuleChooser(new MemoryUsersRepositoryModule())
                 .chooseModules(configuration.getUsersRepositoryImplementation()))
-            .combineWith(chooseJmapModule(configuration));
+            .combineWith(chooseJmapModule(configuration))
+            .combineWith(chooseDropListsModule(configuration));
     }
 
     private static Module chooseJmapModule(MemoryJamesConfiguration configuration) {
         if (configuration.isJmapEnabled()) {
             return new JMAPListenerModule();
+        }
+        return binder -> {
+
+        };
+    }
+
+    private static Module chooseDropListsModule(MemoryJamesConfiguration configuration) {
+        if (configuration.isDropListsEnabled()) {
+            return Modules.combine(new MemoryDropListsModule(), new DropListsRoutesModule());
         }
         return binder -> {
 

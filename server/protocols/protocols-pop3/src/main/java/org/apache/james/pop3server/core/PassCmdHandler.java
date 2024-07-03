@@ -21,8 +21,8 @@ package org.apache.james.pop3server.core;
 import java.io.IOException;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Named;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxManager;
@@ -106,7 +106,7 @@ public class PassCmdHandler extends AbstractPassCmdHandler  {
         } catch (BadCredentialsException e) {
             LOGGER.info("Bad credential supplied for {} with remote address {}",
                 session.getUsername().asString(),
-                session.getRemoteAddress().getAddress());
+                session.getRemoteAddress().getAddress().getHostAddress());
             return null;
         } catch (MailboxException e) {
             throw new IOException("Unable to access mailbox for user " + session.getUsername().asString(), e);

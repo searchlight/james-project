@@ -21,15 +21,17 @@ package org.apache.james.mailbox.cassandra.mail;
 
 import static org.apache.james.blob.api.BlobStore.StoragePolicy.LOW_COST;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
+import static org.apache.james.util.ReactorUtils.LOW_CONCURRENCY;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.List;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.james.blob.api.BlobStore;
+import org.apache.james.mailbox.AttachmentIdFactory;
 import org.apache.james.mailbox.cassandra.mail.CassandraAttachmentDAOV2.DAOAttachment;
 import org.apache.james.mailbox.exception.AttachmentNotFoundException;
 import org.apache.james.mailbox.model.AttachmentId;
@@ -54,11 +56,13 @@ public class CassandraAttachmentMapper implements AttachmentMapper {
 
     private final CassandraAttachmentDAOV2 attachmentDAOV2;
     private final BlobStore blobStore;
+    private final AttachmentIdFactory attachmentIdFactory;
 
     @Inject
-    public CassandraAttachmentMapper(CassandraAttachmentDAOV2 attachmentDAOV2, BlobStore blobStore) {
+    public CassandraAttachmentMapper(CassandraAttachmentDAOV2 attachmentDAOV2, BlobStore blobStore, AttachmentIdFactory attachmentIdFactory) {
         this.attachmentDAOV2 = attachmentDAOV2;
         this.blobStore = blobStore;
+        this.attachmentIdFactory = attachmentIdFactory;
     }
 
     @Override
@@ -120,13 +124,13 @@ public class CassandraAttachmentMapper implements AttachmentMapper {
     @Override
     public Mono<List<MessageAttachmentMetadata>> storeAttachmentsReactive(Collection<ParsedAttachment> attachments, MessageId ownerMessageId) {
         return Flux.fromIterable(attachments)
-            .concatMap(attachment -> storeAttachmentAsync(attachment, ownerMessageId))
+            .flatMapSequential(attachment -> storeAttachmentAsync(attachment, ownerMessageId), LOW_CONCURRENCY)
             .collectList();
     }
 
     private Mono<MessageAttachmentMetadata> storeAttachmentAsync(ParsedAttachment parsedAttachment, MessageId ownerMessageId) {
         try {
-            AttachmentId attachmentId = AttachmentId.random();
+            AttachmentId attachmentId = attachmentIdFactory.random();
             ByteSource content = parsedAttachment.getContent();
             long size = content.size();
             return Mono.from(blobStore.save(blobStore.getDefaultBucketName(), content, LOW_COST))

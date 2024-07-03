@@ -28,8 +28,8 @@ import static reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
 
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.apache.james.webadmin.WebAdminConfiguration;
@@ -63,11 +63,11 @@ class GuiceLifecycleHeathCheckTest {
         WebAdminGuiceProbe webAdminGuiceProbe = server.getProbe(WebAdminGuiceProbe.class);
 
         RestAssured.requestSpecification = new RequestSpecBuilder()
-                .setContentType(ContentType.JSON)
-                .setAccept(ContentType.JSON)
-                .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
-                .setPort(webAdminGuiceProbe.getWebAdminPort().getValue())
-                .build();
+            .setContentType(ContentType.JSON)
+            .setAccept(ContentType.JSON)
+            .setConfig(newConfig().encoderConfig(encoderConfig().defaultContentCharset(StandardCharsets.UTF_8)))
+            .setPort(webAdminGuiceProbe.getWebAdminPort().getValue())
+            .build();
     }
 
     @Nested
@@ -124,11 +124,13 @@ class GuiceLifecycleHeathCheckTest {
 
                 Mono.fromRunnable(server::stop)
                     .publishOn(Schedulers.boundedElastic())
-                    .subscribe(r -> {}, e -> {}, () -> sink.emitEmpty(FAIL_FAST));
+                    .subscribe(r -> {
+                    }, e -> {
+                    }, () -> sink.emitEmpty(FAIL_FAST));
 
                 when()
                     .get("/healthcheck")
-                    .then()
+                .then()
                     .statusCode(HttpStatus.SERVICE_UNAVAILABLE_503);
             } finally {
                 latch.countDown();

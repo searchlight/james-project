@@ -27,8 +27,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.function.Function;
 
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.james.blob.api.Store;
 import org.apache.james.blob.mail.MimeMessagePartsId;
@@ -94,7 +94,7 @@ class Enqueuer {
         return (Throwable e) -> {
             DeleteCondition.WithEnqueueId deleteCondition = DeleteCondition.withEnqueueId(enqueueId, mailReference.getPartsId());
             return Mono.from(mailQueueView.delete(deleteCondition))
-                    .thenReturn(Mono.<Void>error(e));
+                    .then(Mono.<Void>error(e));
         };
     }
 

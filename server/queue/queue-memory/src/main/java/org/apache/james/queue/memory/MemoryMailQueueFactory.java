@@ -37,10 +37,10 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.annotation.PreDestroy;
-import javax.inject.Inject;
-import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.james.core.MailAddress;
@@ -126,7 +126,13 @@ public class MemoryMailQueueFactory implements MailQueueFactory<MemoryMailQueueF
             this.name = name;
             this.scheduler = Schedulers.newSingle("memory-mail-queue");
 
-            this.flux = Mono.<MemoryMailQueueItem>create(sink -> sink.success(mailItems.poll()))
+            this.flux = Mono.<MemoryMailQueueItem>create(sink -> {
+                    try {
+                        sink.success(mailItems.poll(10, TimeUnit.MILLISECONDS));
+                    } catch (InterruptedException e) {
+                        sink.success();
+                    }
+                })
                 .subscribeOn(Schedulers.boundedElastic())
                 .repeat()
                 .subscribeOn(scheduler)

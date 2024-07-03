@@ -49,6 +49,7 @@ import io.netty.handler.codec.compression.ZlibDecoder;
 import io.netty.handler.codec.compression.ZlibEncoder;
 import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.ssl.SslHandler;
+import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 
 public class NettyImapSession implements ImapSession, NettyConstants {
@@ -117,6 +118,12 @@ public class NettyImapSession implements ImapSession, NettyConstants {
     }
 
     @Override
+    public void cancelOngoingProcessing() {
+        Disposable disposableAttribute = channel.attr(REQUEST_IN_FLIGHT_ATTRIBUTE_KEY).getAndSet(null);
+        Optional.ofNullable(disposableAttribute).ifPresent(Disposable::dispose);
+    }
+
+    @Override
     public void authenticated() {
         this.state = ImapSessionState.AUTHENTICATED;
     }
@@ -124,15 +131,15 @@ public class NettyImapSession implements ImapSession, NettyConstants {
     @Override
     public Mono<Void> deselect() {
         this.state = ImapSessionState.AUTHENTICATED;
-        this.selectedMailbox.set(null);
         return closeMailbox();
     }
 
     @Override
     public Mono<Void> selected(SelectedMailbox mailbox) {
         this.state = ImapSessionState.SELECTED;
-        return closeMailbox()
-            .then(Mono.fromRunnable(() -> selectedMailbox.set(mailbox)));
+        return Mono.fromCallable(() -> Optional.ofNullable(selectedMailbox.getAndSet(mailbox)))
+            .flatMap(maybeMailbox -> maybeMailbox.map(SelectedMailbox::deselect)
+                .orElse(Mono.empty()));
     }
 
     @Override
@@ -156,11 +163,15 @@ public class NettyImapSession implements ImapSession, NettyConstants {
     }
 
     private Mono<Void> closeMailbox() {
-        if (selectedMailbox.get() != null) {
-            return selectedMailbox.get().deselect()
-                .then(Mono.fromRunnable(() -> selectedMailbox.set(null)));
-        }
-        return Mono.empty();
+        return closeMailbox(selectedMailbox.getAndSet(null));
+    }
+
+    private Mono<Void> closeMailbox(SelectedMailbox value) {
+        return Optional.ofNullable(value)
+            .map(s -> s.deselect()
+                .then(Mono.fromRunnable(() -> selectedMailbox.set(null))))
+            .orElse(Mono.empty())
+            .then();
     }
 
     @Override
@@ -312,5 +323,15 @@ public class NettyImapSession implements ImapSession, NettyConstants {
     @Override
     public void schedule(Runnable runnable, Duration waitDelay) {
         channel.eventLoop().schedule(runnable, waitDelay.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    @Override
+    public boolean backpressureNeeded(Runnable restoreBackpressure) {
+        boolean writable = channel.isWritable();
+        if (!writable) {
+            channel.attr(BACKPRESSURE_CALLBACK).set(restoreBackpressure);
+            return true;
+        }
+        return false;
     }
 }

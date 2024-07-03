@@ -20,7 +20,7 @@
 package org.apache.james.jmap.method
 
 import eu.timepit.refined.auto._
-import javax.inject.Inject
+import jakarta.inject.Inject
 import org.apache.james.jmap.api.identity.IdentityRepository
 import org.apache.james.jmap.api.model.{Identity, IdentityId}
 import org.apache.james.jmap.core.CapabilityIdentifier.{CapabilityIdentifier, EMAIL_SUBMISSION, JMAP_CORE}
@@ -36,6 +36,7 @@ import play.api.libs.json.JsObject
 import reactor.core.scala.publisher.{SFlux, SMono}
 
 class IdentityGetMethod @Inject() (identityRepository: IdentityRepository,
+                                   val configuration: JmapRfc8621Configuration,
                                    val metricFactory: MetricFactory,
                                    val sessionSupplier: SessionSupplier,
                                    val sessionTranslator: SessionTranslator) extends MethodRequiringAccountId[IdentityGetRequest] {
@@ -58,8 +59,9 @@ class IdentityGetMethod @Inject() (identityRepository: IdentityRepository,
     }).map(InvocationWithContext(_, invocation.processingContext))
   }
 
-  override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[IllegalArgumentException, IdentityGetRequest] =
+  override def getRequest(mailboxSession: MailboxSession, invocation: Invocation): Either[Exception, IdentityGetRequest] =
     IdentitySerializer.deserialize(invocation.arguments.value).asEitherRequest
+      .flatMap(request => request.validate(configuration).map(_ => request))
 
   private def getIdentities(request: IdentityGetRequest,
                             mailboxSession: MailboxSession): SMono[IdentityGetResponse] =

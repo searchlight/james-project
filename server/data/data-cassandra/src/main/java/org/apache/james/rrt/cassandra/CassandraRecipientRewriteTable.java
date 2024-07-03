@@ -21,7 +21,7 @@ package org.apache.james.rrt.cassandra;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.james.core.Domain;
@@ -34,6 +34,8 @@ import org.apache.james.rrt.lib.MappingsImpl;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+
+import reactor.core.publisher.Flux;
 
 public class CassandraRecipientRewriteTable extends AbstractRecipientRewriteTable {
     private final CassandraRecipientRewriteTableDAO cassandraRecipientRewriteTableDAO;
@@ -90,5 +92,12 @@ public class CassandraRecipientRewriteTable extends AbstractRecipientRewriteTabl
             "Not supported mapping of type %s", mapping.getType());
 
         return cassandraMappingsSourcesDAO.retrieveSources(mapping).toStream();
+    }
+
+    @Override
+    public Flux<MappingSource> listSourcesReactive(Mapping mapping) {
+        Preconditions.checkArgument(listSourcesSupportedType.contains(mapping.getType()),
+            "Not supported mapping of type %s", mapping.getType());
+        return cassandraMappingsSourcesDAO.retrieveSources(mapping);
     }
 }

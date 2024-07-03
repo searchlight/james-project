@@ -29,7 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 
 import java.io.ByteArrayInputStream;
-import java.net.URL;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.time.Clock;
 import java.time.Instant;
@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
-import javax.mail.Flags;
+import jakarta.mail.Flags;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -96,8 +96,10 @@ public class FeedHamToRspamdTaskTest {
     public static final Instant NOW = ZonedDateTime.now().toInstant();
 
     static ClientAndServer mockServer = null;
+
     static class TestRspamdHttpClient extends RspamdHttpClient {
         private final AtomicInteger hitCounter;
+
         public TestRspamdHttpClient(RspamdClientConfiguration configuration) {
             super(configuration);
             this.hitCounter = new AtomicInteger(0);
@@ -307,7 +309,7 @@ public class FeedHamToRspamdTaskTest {
         task = new FeedHamToRspamdTask(mailboxManager, usersRepository, messageIdManager, mapperFactory, client, runningOptions, clock, configuration);
 
         IntStream.range(0, 10)
-                .forEach(Throwing.intConsumer(any -> appendHamMessage(BOB_INBOX_MAILBOX, Date.from(NOW.minusSeconds(ONE_DAY_IN_SECOND)))));
+            .forEach(Throwing.intConsumer(any -> appendHamMessage(BOB_INBOX_MAILBOX, Date.from(NOW.minusSeconds(ONE_DAY_IN_SECOND)))));
 
         Task.Result result = task.run();
 
@@ -577,7 +579,7 @@ public class FeedHamToRspamdTaskTest {
             .when(HttpRequest.request().withPath("/learnham"))
             .respond(httpRequest -> HttpResponse.response().withStatusCode(200), Delay.delay(TimeUnit.SECONDS, 10));
 
-        RspamdHttpClient httpClient = new RspamdHttpClient(new RspamdClientConfiguration(new URL(String.format("http://localhost:%s", mockServer.getLocalPort())),
+        RspamdHttpClient httpClient = new RspamdHttpClient(new RspamdClientConfiguration(new URI(String.format("http://localhost:%s", mockServer.getLocalPort())).toURL(),
             PASSWORD, Optional.of(3)));
 
         RunningOptions runningOptions = new RunningOptions(Optional.empty(),

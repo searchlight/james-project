@@ -19,8 +19,8 @@
 
 package org.apache.james.transport.mailets;
 
-import javax.inject.Inject;
-import javax.mail.MessagingException;
+import jakarta.inject.Inject;
+import jakarta.mail.MessagingException;
 
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
