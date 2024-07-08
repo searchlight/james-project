@@ -61,6 +61,7 @@ import spark.Request;
 import spark.Response;
 import spark.Service;
 
+
 public class GroupsRoutes implements Routes {
 
     public static final String ROOT_PATH = "address/groups";
@@ -108,8 +109,7 @@ public class GroupsRoutes implements Routes {
         service.delete(GROUP_ADDRESS_PATH, this::removeGroup);
     }
 
-    public List<MappingSource> listGroups(Request request, Response response) throws RecipientRewriteTableException {
-        System.out.println(request.toString());
+    public List<MappingSource> listGroups(Request request, Response response) throws RecipientRewriteTableException, JsonProcessingException {
         return recipientRewriteTable.getSourcesForType(Mapping.Type.Group).collect(ImmutableList.toImmutableList());
     }
 
@@ -208,14 +208,14 @@ public class GroupsRoutes implements Routes {
         return halt(HttpStatus.NO_CONTENT_204);
     }
 
-    public static class GroupStatusInfo {
+    public static class IsGroupExistStructure {
         // Fields
         public String address;
         public String status;
         public String reason;
 
         // Constructor
-        public GroupStatusInfo(String address, String status, String reason) {
+        public IsGroupExistStructure(String address, String status, String reason) {
             this.address = address;
             this.status = status;
             this.reason = reason;
@@ -239,19 +239,19 @@ public class GroupsRoutes implements Routes {
         List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
 
         //checking is this group exist or not.
-        GroupStatusInfo[] result = new GroupStatusInfo[groups.size()];
+        IsGroupExistStructure[] result = new IsGroupExistStructure[groups.size()];
         for (int i = 0; i < groups.size(); i++) {
             String group = groups.get(i);
             MailAddress groupAddress;
             try {
                 groupAddress = new MailAddress(group);
                 if (mp.containsKey(groupAddress)) {
-                    result[i] = new GroupStatusInfo(group, "Exists", "");
+                    result[i] = new IsGroupExistStructure(group, "success", "exist");
                 } else {
-                    result[i] = new GroupStatusInfo(group,  "DoesNotExists", "");
+                    result[i] = new IsGroupExistStructure(group,  "failure", "not exist");
                 }
             } catch (AddressException e) {
-                result[i] = new GroupStatusInfo(group, "Error", e.toString());
+                result[i] = new IsGroupExistStructure(group, "failure", "invalid format");
             }
         }
 
