@@ -208,14 +208,14 @@ public class GroupsRoutes implements Routes {
         return halt(HttpStatus.NO_CONTENT_204);
     }
 
-    public static class IsGroupExistStructure {
+    public static class GroupStatusInfo {
         // Fields
         public String address;
         public String status;
         public String reason;
 
         // Constructor
-        public IsGroupExistStructure(String address, String status, String reason) {
+        public GroupStatusInfo(String address, String status, String reason) {
             this.address = address;
             this.status = status;
             this.reason = reason;
@@ -239,19 +239,19 @@ public class GroupsRoutes implements Routes {
         List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
 
         //checking is this group exist or not.
-        IsGroupExistStructure[] result = new IsGroupExistStructure[groups.size()];
+        GroupStatusInfo[] result = new GroupStatusInfo[groups.size()];
         for (int i = 0; i < groups.size(); i++) {
             String group = groups.get(i);
             MailAddress groupAddress;
             try {
                 groupAddress = new MailAddress(group);
                 if (mp.containsKey(groupAddress)) {
-                    result[i] = new IsGroupExistStructure(group, "success", "exist");
+                    result[i] = new GroupStatusInfo(group, "Exists", "");
                 } else {
-                    result[i] = new IsGroupExistStructure(group,  "failure", "not exist");
+                    result[i] = new GroupStatusInfo(group,  "DoesNotExists", "");
                 }
             } catch (AddressException e) {
-                result[i] = new IsGroupExistStructure(group, "failure", "invalid format");
+                result[i] = new GroupStatusInfo(group, "Error", e.toString());
             }
         }
 
