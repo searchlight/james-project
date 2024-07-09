@@ -154,7 +154,7 @@ public class GroupsRoutes implements Routes {
                 result[i] = new GroupStatusInfo(group, "success","");
             } catch (Exception e) {
                 if (e.toString().equals("spark.HaltException")) {
-                    result[i] = new GroupStatusInfo(group, "failed", "Source domain is not managed by the domainList.Domain does not exist");
+                    result[i] = new GroupStatusInfo(group, "failed", "The source domain is not recognized or does not exist in the domain list.");
                 } else {
                     result[i] = new GroupStatusInfo(group, "failed", e.toString());
                 }
