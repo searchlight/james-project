@@ -47,6 +47,8 @@ import org.apache.james.webadmin.utils.ErrorResponder;
 import org.apache.james.webadmin.utils.ErrorResponder.ErrorType;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.eclipse.jetty.http.HttpStatus;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -65,6 +67,7 @@ import spark.Service;
 public class GroupsRoutes implements Routes {
 
     public static final String ROOT_PATH = "address/groups";
+    public static final String ADD_GROUP = "address/groups/addGroup";
 
     private static final String GROUP_ADDRESS = "groupAddress";
     private static final String GROUP_ADDRESS_PATH = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS;
@@ -101,6 +104,7 @@ public class GroupsRoutes implements Routes {
         service.get(GROUP_MULTIPLE_PATH_IS_EXIST, this::isExist);
         service.get(GROUP_ADDRESS_PATH, this::listGroupMembers, jsonTransformer);
         service.put(GROUP_ADDRESS_PATH, (request, response) -> halt(HttpStatus.BAD_REQUEST_400));
+        service.post(ADD_GROUP, this::createMultipleGroupWithMultipleUser);
         service.post(GROUP_ADDRESS_PATH, this::createGroupWithDummyUser);
         service.post(ROOT_PATH, this::createMultipleGroupWithDummyUser);
         service.put(USER_IN_GROUP_ADDRESS_PATH, this::addToGroup);
@@ -136,8 +140,41 @@ public class GroupsRoutes implements Routes {
         }
     }
 
-    public String createMultipleGroupWithDummyUser(Request request, Response response) throws JsonProcessingException {
+    public static class GroupMembersInfo {
+        public String address;
+        public String status;
+        public String reason;
 
+        public GroupMembersInfo(String address, String status, String reason) {
+            this.address = address;
+            this.status = status;
+            this.reason = reason;
+        }
+
+        public GroupMembersInfo() {
+
+        }
+    }
+
+    public static class GroupsWithMembersInfo {
+        public String address;
+        public String status;
+        public String reason;
+        public GroupMembersInfo []membersInfo;
+
+        public GroupsWithMembersInfo(String address, String status, String reason, GroupMembersInfo... membersInfo) {
+            this.address = address;
+            this.status = status;
+            this.reason = reason;
+            this.membersInfo = membersInfo;
+        }
+
+        public GroupsWithMembersInfo() {
+
+        }
+    }
+
+    public String createMultipleGroupWithDummyUser(Request request, Response response) throws JsonProcessingException {
         String jsonString = request.body();
         List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
 
@@ -165,6 +202,51 @@ public class GroupsRoutes implements Routes {
 
         return jsonResult;
     }
+
+    public String createMultipleGroupWithMultipleUser(Request request, Response response)  {
+        String jsonString = request.body();
+        JSONArray groupsArray = new JSONArray(jsonString);
+        for (int i = 0; i < groupsArray.length(); i++) {
+            JSONObject groupObject = groupsArray.getJSONObject(i);
+            String groupAddr = groupObject.getString("groupAddr");
+            JSONArray memberAddrsArray = groupObject.getJSONArray("memberAddrs");
+            addGroupMembers(groupAddr, memberAddrsArray);
+        }
+        return "";
+    }
+
+    public void addGroupMembers(String groupAddr, JSONArray members)  {
+        GroupsWithMembersInfo result = new GroupsWithMembersInfo();
+        MailAddress groupAddress;
+        try {
+            groupAddress = new MailAddress(groupAddr);
+            Domain domain = groupAddress.getDomain();
+            MappingSource source = MappingSource.fromUser(Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), domain));
+            for (int j = 0; j < members.length(); j++) {
+                try {
+                    MailAddress userAddress = MailAddressParser.parseMailAddress(members.getString(j), USER_ADDRESS_TYPE);
+                    addGroupMember(source, userAddress);
+                } catch (Exception e) {
+                    System.out.println(e.toString());
+                }
+            }
+        } catch (Exception e) {
+            if (e.toString().equals("spark.HaltException")) {
+                System.out.println("The source domain is not recognized or does not exist in the domain list.");
+                result = new GroupsWithMembersInfo(groupAddr, "failed", "The source domain is not recognized or does not exist in the domain list.");
+            } else {
+                System.out.println(e.toString());
+                result = new GroupsWithMembersInfo(groupAddr, "failed", e.toString());
+            }
+        }
+
+    }
+    /*public void addSingleMemberIntoGroup(MailAddress groupAddress, String member)  {
+        GroupMembersInfo result = new GroupMembersInfo();
+        Domain domain = groupAddress.getDomain();
+        MappingSource source = MappingSource.fromUser(Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), domain));
+        addGroupMember(source, MailAddress.getMailSender(member));
+    }*/
 
     public HaltException addToGroup(Request request, Response response) {
         MailAddress groupAddress = MailAddressParser.parseMailAddress(request.params(GROUP_ADDRESS), GROUP_ADDRESS_TYPE);
@@ -261,6 +343,7 @@ public class GroupsRoutes implements Routes {
             mp.put(currentGroupList.get(i).asMailAddressString(), true);
         }
         String jsonString = request.body();
+        System.out.println(jsonString);
         List<String> groups = objectMapper.readValue(jsonString, new TypeReference<List<String>>() {});
 
         //checking is this group exist or not.
