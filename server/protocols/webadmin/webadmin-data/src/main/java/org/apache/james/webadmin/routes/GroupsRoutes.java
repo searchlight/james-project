@@ -22,6 +22,7 @@ package org.apache.james.webadmin.routes;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 import static spark.Spark.halt;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +63,6 @@ import spark.HaltException;
 import spark.Request;
 import spark.Response;
 import spark.Service;
-
 
 public class GroupsRoutes implements Routes {
 
@@ -150,10 +150,6 @@ public class GroupsRoutes implements Routes {
             this.status = status;
             this.reason = reason;
         }
-
-        public GroupMembersInfo() {
-
-        }
     }
 
     public static class GroupsWithMembersInfo {
@@ -167,10 +163,6 @@ public class GroupsRoutes implements Routes {
             this.status = status;
             this.reason = reason;
             this.membersInfo = membersInfo;
-        }
-
-        public GroupsWithMembersInfo() {
-
         }
     }
 
@@ -203,20 +195,25 @@ public class GroupsRoutes implements Routes {
         return jsonResult;
     }
 
-    public String createMultipleGroupWithMultipleUser(Request request, Response response)  {
+    public String createMultipleGroupWithMultipleUser(Request request, Response response) throws JsonProcessingException {
         String jsonString = request.body();
         JSONArray groupsArray = new JSONArray(jsonString);
+        List<GroupsWithMembersInfo> groupsWithMembers = new ArrayList<>();
+
         for (int i = 0; i < groupsArray.length(); i++) {
             JSONObject groupObject = groupsArray.getJSONObject(i);
             String groupAddr = groupObject.getString("groupAddr");
             JSONArray memberAddrsArray = groupObject.getJSONArray("memberAddrs");
-            addGroupMembers(groupAddr, memberAddrsArray);
+            groupsWithMembers.add(addGroupMembers(groupAddr, memberAddrsArray));
         }
-        return "";
+        ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
+        return ow.writeValueAsString(groupsWithMembers);
     }
 
-    public void addGroupMembers(String groupAddr, JSONArray members)  {
-        GroupsWithMembersInfo result = new GroupsWithMembersInfo();
+    public GroupsWithMembersInfo addGroupMembers(String groupAddr, JSONArray members)  {
+        GroupsWithMembersInfo result;
+        List<GroupMembersInfo> groupMembersInfoList = new ArrayList<>();
+
         MailAddress groupAddress;
         try {
             groupAddress = new MailAddress(groupAddr);
@@ -226,27 +223,25 @@ public class GroupsRoutes implements Routes {
                 try {
                     MailAddress userAddress = MailAddressParser.parseMailAddress(members.getString(j), USER_ADDRESS_TYPE);
                     addGroupMember(source, userAddress);
+                    GroupMembersInfo groupMembersInfo = new GroupMembersInfo(members.getString(j), "success", "");
+                    groupMembersInfoList.add(groupMembersInfo);
                 } catch (Exception e) {
-                    System.out.println(e.toString());
+                    GroupMembersInfo groupMembersInfo = new GroupMembersInfo(members.getString(j), e.toString(), "");
+                    groupMembersInfoList.add(groupMembersInfo);
                 }
             }
+            result = new GroupsWithMembersInfo(groupAddr, "success", "");
+            result.membersInfo = groupMembersInfoList.toArray(new GroupMembersInfo[groupMembersInfoList.size()]);
         } catch (Exception e) {
             if (e.toString().equals("spark.HaltException")) {
                 System.out.println("The source domain is not recognized or does not exist in the domain list.");
                 result = new GroupsWithMembersInfo(groupAddr, "failed", "The source domain is not recognized or does not exist in the domain list.");
             } else {
-                System.out.println(e.toString());
                 result = new GroupsWithMembersInfo(groupAddr, "failed", e.toString());
             }
         }
-
+        return result;
     }
-    /*public void addSingleMemberIntoGroup(MailAddress groupAddress, String member)  {
-        GroupMembersInfo result = new GroupMembersInfo();
-        Domain domain = groupAddress.getDomain();
-        MappingSource source = MappingSource.fromUser(Username.fromLocalPartWithDomain(groupAddress.getLocalPart(), domain));
-        addGroupMember(source, MailAddress.getMailSender(member));
-    }*/
 
     public HaltException addToGroup(Request request, Response response) {
         MailAddress groupAddress = MailAddressParser.parseMailAddress(request.params(GROUP_ADDRESS), GROUP_ADDRESS_TYPE);
