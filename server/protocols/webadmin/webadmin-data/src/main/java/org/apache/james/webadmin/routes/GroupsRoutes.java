@@ -67,7 +67,7 @@ import spark.Service;
 public class GroupsRoutes implements Routes {
 
     public static final String ROOT_PATH = "address/groups";
-    public static final String ADD_GROUP = "address/groups/addGroup";
+    public static final String ADD_GROUP = "address/groups/add-groups";
 
     private static final String GROUP_ADDRESS = "groupAddress";
     private static final String GROUP_ADDRESS_PATH = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS;
@@ -104,7 +104,7 @@ public class GroupsRoutes implements Routes {
         service.get(GROUP_MULTIPLE_PATH_IS_EXIST, this::isExist);
         service.get(GROUP_ADDRESS_PATH, this::listGroupMembers, jsonTransformer);
         service.put(GROUP_ADDRESS_PATH, (request, response) -> halt(HttpStatus.BAD_REQUEST_400));
-        service.post(ADD_GROUP, this::createMultipleGroupWithMultipleUser);
+        service.post(ADD_GROUP, this::createGroupsAndAssignMembers);
         service.post(GROUP_ADDRESS_PATH, this::createGroupWithDummyUser);
         service.post(ROOT_PATH, this::createMultipleGroupWithDummyUser);
         service.put(USER_IN_GROUP_ADDRESS_PATH, this::addToGroup);
@@ -195,7 +195,7 @@ public class GroupsRoutes implements Routes {
         return jsonResult;
     }
 
-    public String createMultipleGroupWithMultipleUser(Request request, Response response) throws JsonProcessingException {
+    public String createGroupsAndAssignMembers(Request request, Response response) throws JsonProcessingException {
         String jsonString = request.body();
         JSONArray groupsArray = new JSONArray(jsonString);
         List<GroupsWithMembersInfo> groupsWithMembers = new ArrayList<>();
