@@ -70,6 +70,11 @@ public class JWTAuthenticationStrategy implements AuthenticationStrategy {
                     throw new UnauthorizedException("Invalid username", e);
                 }
 
+                //TODO: Implement this behavior using an extension-jar instead
+                if (!usersRepository.contains(username)) {
+                    throw new UnauthorizedException("User does not exist");
+                }
+
                 return username;
             }).subscribeOn(ReactorUtils.BLOCKING_CALL_WRAPPER))
             .map(Throwing.function(user -> mailboxManager.authenticate(user).withoutDelegation()));
