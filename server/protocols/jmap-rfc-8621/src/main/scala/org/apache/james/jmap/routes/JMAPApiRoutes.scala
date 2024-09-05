@@ -25,8 +25,13 @@ import java.util.stream.Stream
 
 import io.netty.handler.codec.http.HttpHeaderNames.{CONTENT_LENGTH, CONTENT_TYPE}
 import io.netty.handler.codec.http.HttpMethod
+<<<<<<< HEAD
 import io.netty.handler.codec.http.HttpResponseStatus.OK
 import javax.inject.{Inject, Named}
+=======
+import io.netty.handler.codec.http.HttpResponseStatus.{NOT_FOUND, OK}
+import jakarta.inject.{Inject, Named}
+>>>>>>> b721547002 (Add UserNotFoundException)
 import org.apache.james.jmap.HttpConstants.JSON_CONTENT_TYPE
 import org.apache.james.jmap.JMAPUrls.JMAP
 import org.apache.james.jmap.core.CapabilityIdentifier.CapabilityIdentifier
