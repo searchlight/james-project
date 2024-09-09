@@ -72,7 +72,7 @@ public class GroupsRoutes implements Routes {
 
     private static final String GROUP_MULTIPLE_PATH = "address/groups";
     private static final String GROUP_MULTIPLE_PATH_IS_EXIST = "address/groups/isExist";
-    private static final String GROUP_MEMBER_IS_EXIST = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS + SEPARATOR + ":" + USER_ADDRESS;
+    private static final String GROUP_MEMBER_IS_EXIST = "address/groups/:groupAddress/:userAddress";
 
     private static final String USER_IN_GROUP_ADDRESS_PATH = GROUP_ADDRESS_PATH + SEPARATOR + ":" + USER_ADDRESS;
     private static final String GROUP_ADDRESS_TYPE = "group";
