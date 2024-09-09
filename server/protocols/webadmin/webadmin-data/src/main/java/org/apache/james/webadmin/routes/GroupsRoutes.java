@@ -267,9 +267,7 @@ public class GroupsRoutes implements Routes {
                 .flatMap(Optional::stream)
                 .map(MailAddress::asString)
                 .collect(ImmutableSortedSet.toImmutableSortedSet(String::compareTo));
-        for (var s : list) {
-            System.out.println(s);
-        }
+
         MailAddress userAddress = MailAddressParser.parseMailAddress(request.params(USER_ADDRESS), USER_ADDRESS_TYPE);
         for (String user : list) {
             if (user.equals(userAddress.asString())) {
