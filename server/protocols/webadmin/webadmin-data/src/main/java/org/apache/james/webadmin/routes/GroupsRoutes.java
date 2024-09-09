@@ -72,7 +72,7 @@ public class GroupsRoutes implements Routes {
 
     private static final String GROUP_MULTIPLE_PATH = "address/groups";
     private static final String GROUP_MULTIPLE_PATH_IS_EXIST = "address/groups/isExist";
-    private static final String GROUP_MEMBER_IS_EXIST = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS + SEPARATOR + "members" + SEPARATOR + ":" + USER_ADDRESS;
+    private static final String GROUP_MEMBER_IS_EXIST = ROOT_PATH + SEPARATOR + ":" + GROUP_ADDRESS + SEPARATOR + ":" + USER_ADDRESS;
 
     private static final String USER_IN_GROUP_ADDRESS_PATH = GROUP_ADDRESS_PATH + SEPARATOR + ":" + USER_ADDRESS;
     private static final String GROUP_ADDRESS_TYPE = "group";
@@ -276,7 +276,11 @@ public class GroupsRoutes implements Routes {
                 return halt(HttpStatus.OK_200);
             }
         }
-        return halt(HttpStatus.NO_CONTENT_204);
+        return ErrorResponder.builder()
+                .statusCode(HttpStatus.NOT_FOUND_404)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("%s does not exist", userAddress)
+                .haltError();
     }
 
     public String isExist(Request request, Response response) throws RecipientRewriteTableException, JsonProcessingException {
