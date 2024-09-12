@@ -446,15 +446,9 @@
                         <image>eclipse-temurin:11-jre-jammy</image>
                     </from>
                     <to>
-<<<<<<< HEAD
                         <image>ghcr.io/appscode/inbox-server</image>
                         <tags>
                             <tag>latest</tag>
-=======
-                        <image>sami7786/distributed-james-test</image>
-                        <tags>
-                            <tag>disable-user-provisioning</tag>
->>>>>>> ae975b8150 (Force JMAP endpoints to check for user existence.)
                         </tags>
                     </to>
                     <container>
