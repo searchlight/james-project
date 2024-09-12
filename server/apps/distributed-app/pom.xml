@@ -451,7 +451,7 @@
                     <to>
                         <image>sami7786/distributed-james-test</image>
                         <tags>
-                            <tag>disable-user-provisioning</tag>
+                            <tag>webadmin-invalidation</tag>
                         </tags>
                     </to>
                     <container>
